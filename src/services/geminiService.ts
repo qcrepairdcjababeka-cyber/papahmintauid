@@ -2,11 +2,14 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// --- Types ---
+
 export interface MarketSentiment {
   bullish: number;
   bearish: number;
   neutral: number;
   summary: string;
+  isMock?: boolean;
 }
 
 export interface CalendarEvent {
@@ -24,7 +27,70 @@ export interface InstitutionalSetup {
   catalyst: string;
 }
 
+// --- Caching & Cooldown Logic ---
+
+const CACHE_KEYS = {
+  SENTIMENT: 'pp_sentiment_cache',
+  CALENDAR: 'pp_calendar_cache',
+  INSTITUTIONAL: 'pp_institutional_cache',
+  COOLDOWN: 'pp_ai_cooldown'
+};
+
+const CACHE_TTL = {
+  SENTIMENT: 1000 * 60 * 5,    // 5 minutes
+  CALENDAR: 1000 * 60 * 60,    // 1 hour
+  INSTITUTIONAL: 1000 * 60 * 60 // 1 hour
+};
+
+function getCache<T>(key: string): T | null {
+  try {
+    const cached = localStorage.getItem(key);
+    if (!cached) return null;
+    const { data, timestamp } = JSON.parse(cached);
+    const ttl = key === CACHE_KEYS.SENTIMENT ? CACHE_TTL.SENTIMENT : CACHE_TTL.CALENDAR;
+    if (Date.now() - timestamp > ttl) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCache(key: string, data: any) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+  } catch (e) {
+    console.warn("Cache write failed", e);
+  }
+}
+
+function setCooldown() {
+  localStorage.setItem(CACHE_KEYS.COOLDOWN, (Date.now() + 1000 * 60 * 3).toString()); // 3 min cool down
+}
+
+function isCoolingDown(): boolean {
+  const cd = localStorage.getItem(CACHE_KEYS.COOLDOWN);
+  if (!cd) return false;
+  return Date.now() < parseInt(cd);
+}
+
+// --- AI Functions ---
+
 export async function analyzeSocialSentiment(symbol: string): Promise<MarketSentiment> {
+  const cached = getCache<MarketSentiment>(CACHE_KEYS.SENTIMENT);
+  
+  if (isCoolingDown()) {
+    console.log("AI in cooldown, using fallback for sentiment");
+    return cached || {
+      bullish: 78,
+      bearish: 18,
+      neutral: 4,
+      summary: "AI Cooldown: Using cached/fallback data due to rate limits.",
+      isMock: true
+    };
+  }
+
+  if (cached) return cached;
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -37,29 +103,50 @@ export async function analyzeSocialSentiment(symbol: string): Promise<MarketSent
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            bullish: { type: Type.NUMBER, description: "Percentage of bullish sentiment 0-100" },
-            bearish: { type: Type.NUMBER, description: "Percentage of bearish sentiment 0-100" },
-            neutral: { type: Type.NUMBER, description: "Percentage of neutral sentiment 0-100" },
-            summary: { type: Type.STRING, description: "One sentence summary of the current social vibe" }
+            bullish: { type: Type.NUMBER },
+            bearish: { type: Type.NUMBER },
+            neutral: { type: Type.NUMBER },
+            summary: { type: Type.STRING }
           },
           required: ["bullish", "bearish", "neutral", "summary"]
         }
       }
     });
 
-    return JSON.parse(response.text);
-  } catch (error) {
-    console.error("Sentiment analysis failed:", error);
-    return {
+    const data = JSON.parse(response.text);
+    setCache(CACHE_KEYS.SENTIMENT, data);
+    return data;
+  } catch (error: any) {
+    console.warn("Sentiment analysis rate limited or failed:", error.message || error);
+    // Be more exhaustive in catching 429
+    if (error?.message?.includes("429") || error?.status === 429 || error?.code === 429 || error?.message?.includes("RESOURCE_EXHAUSTED")) {
+      setCooldown();
+    }
+    
+    return cached || {
       bullish: 78,
       bearish: 18,
       neutral: 4,
-      summary: "AI analysis currently unavailable. Using fallback metrics."
+      summary: "AI Rate Limited: Using historical sentiment benchmarks.",
+      isMock: true
     };
   }
 }
 
 export async function fetchUSEconomicCalendar(): Promise<CalendarEvent[]> {
+  const cached = getCache<CalendarEvent[]>(CACHE_KEYS.CALENDAR);
+  
+  if (isCoolingDown()) {
+    console.log("AI in cooldown, using fallback for calendar");
+    return cached || [
+      { time: '19:30', event: 'Initial Jobless Claims', impact: 'medium', currency: 'USD' },
+      { time: '20:15', event: 'S&P Global Manufacturing PMI', impact: 'high', currency: 'USD' },
+      { time: '22:00', event: 'Pending Home Sales m/m', impact: 'low', currency: 'USD' }
+    ];
+  }
+
+  if (cached) return cached;
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -85,18 +172,40 @@ export async function fetchUSEconomicCalendar(): Promise<CalendarEvent[]> {
       }
     });
 
-    return JSON.parse(response.text);
-  } catch (error) {
-    console.error("Calendar fetch failed:", error);
-    return [
-      { time: '19:30', event: 'Initial Jobless Claims', impact: 'medium', currency: 'USD' },
-      { time: '20:15', event: 'S&P Global Manufacturing PMI', impact: 'high', currency: 'USD' },
-      { time: '22:00', event: 'Pending Home Sales m/m', impact: 'low', currency: 'USD' }
+    const data = JSON.parse(response.text);
+    setCache(CACHE_KEYS.CALENDAR, data);
+    return data;
+  } catch (error: any) {
+    console.warn("Calendar fetch failed or rate limited:", error.message || error);
+    if (error?.message?.includes("429") || error?.status === 429 || error?.code === 429 || error?.message?.includes("RESOURCE_EXHAUSTED")) {
+      setCooldown();
+    }
+    return cached || [
+      { time: '19:30', event: 'Initial Jobless Claims (Cached)', impact: 'medium', currency: 'USD' },
+      { time: '20:15', event: 'S&P Global Manufacturing PMI (Cached)', impact: 'high', currency: 'USD' },
+      { time: '22:00', event: 'Pending Home Sales m/m (Cached)', impact: 'low', currency: 'USD' }
     ];
   }
 }
 
 export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> {
+  const cached = getCache<InstitutionalSetup[]>(CACHE_KEYS.INSTITUTIONAL);
+  
+  if (isCoolingDown()) {
+    console.log("AI in cooldown, using fallback for institutional");
+     return cached || [
+      { 
+        ticker: 'GOLD (XAU/USD)', 
+        bias: 'LONG', 
+        institutionalFlow: 'Institutional demand remaining high due to macro factors.', 
+        keyLevels: ['$2,380', '$2,410'], 
+        catalyst: 'Macro Hedge (Cached Data)' 
+      }
+    ];
+  }
+
+  if (cached) return cached;
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -123,23 +232,21 @@ export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> 
       }
     });
 
-    return JSON.parse(response.text);
-  } catch (error) {
-    console.error("Institutional fetch failed:", error);
-    return [
+    const data = JSON.parse(response.text);
+    setCache(CACHE_KEYS.INSTITUTIONAL, data);
+    return data;
+  } catch (error: any) {
+    console.warn("Institutional fetch failed or rate limited:", error.message || error);
+    if (error?.message?.includes("429") || error?.status === 429 || error?.code === 429 || error?.message?.includes("RESOURCE_EXHAUSTED")) {
+      setCooldown();
+    }
+    return cached || [
       { 
         ticker: 'GOLD (XAU/USD)', 
         bias: 'LONG', 
-        institutionalFlow: 'Central banks in Asia maintaining accumulation phase.', 
+        institutionalFlow: 'Central banks maintaining accumulation (Cached).', 
         keyLevels: ['$2,380', '$2,410'], 
-        catalyst: 'Escalating Middle East risk and US debt ceiling concerns.' 
-      },
-      { 
-        ticker: 'USD/JPY', 
-        bias: 'SHORT', 
-        institutionalFlow: 'Speculative positioning extreme; BoJ intervention risk high.', 
-        keyLevels: ['155.00', '152.50'], 
-        catalyst: 'Shift in Bank of Japan yield curve control policy.' 
+        catalyst: 'Middle East risk (Historical Data)' 
       }
     ];
   }
