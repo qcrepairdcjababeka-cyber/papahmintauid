@@ -120,8 +120,14 @@ const SNR_LEVELS: SNRLevel[] = [
 
 // --- Sub-Components ---
 
-const Header = ({ activeView, setActiveView }: { activeView: string, setActiveView: (v: 'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional') => void }) => {
+const Header = ({ activeView, setActiveView, selectedSymbol, setSelectedSymbol }: { 
+  activeView: string, 
+  setActiveView: (v: 'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional') => void,
+  selectedSymbol: { symbol: string, label: string },
+  setSelectedSymbol: (s: { symbol: string, label: string }) => void
+}) => {
   const [time, setTime] = useState(new Date());
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -129,13 +135,45 @@ const Header = ({ activeView, setActiveView }: { activeView: string, setActiveVi
   }, []);
 
   return (
-    <header className="h-auto md:h-14 border-b border-brand-border px-2 md:px-4 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between bg-slate-900/50 gap-2">
+    <header className="h-auto md:h-14 border-b border-brand-border px-2 md:px-4 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between bg-slate-900/50 gap-2 z-50">
       <div className="flex items-center justify-between w-full md:w-auto gap-2 md:gap-6">
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 md:w-6 md:h-6 bg-brand-green rounded-sm flex items-center justify-center shrink-0">
-            <Zap className="w-3 h-3 md:w-4 md:h-4 text-slate-950 fill-slate-950" />
+        <div className="flex items-center gap-2 md:gap-4">
+           <div className="flex items-center gap-1.5 md:gap-2">
+            <div className="w-5 h-5 md:w-6 md:h-6 bg-brand-green rounded-sm flex items-center justify-center shrink-0">
+              <Zap className="w-3 h-3 md:w-4 md:h-4 text-slate-950 fill-slate-950" />
+            </div>
+            <span className="font-bold tracking-tighter text-xs md:text-xl text-white whitespace-nowrap uppercase">PAPAMINTAUID</span>
           </div>
-          <span className="font-bold tracking-tighter text-sm md:text-xl text-white whitespace-nowrap uppercase">PAPAMINTAUID</span>
+
+          {/* Symbol Selector */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsSelectorOpen(!isSelectorOpen)}
+              className="flex items-center gap-1 md:gap-2 bg-slate-950 border border-slate-800 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[8px] md:text-[10px] font-black text-white uppercase tracking-widest hover:border-brand-green transition-colors"
+            >
+              <span>{selectedSymbol.label.split(' ')[0]}</span>
+              <ChevronDown className={`w-2.5 h-2.5 md:w-3 md:h-3 text-slate-500 transition-transform ${isSelectorOpen ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {isSelectorOpen && (
+              <div className="absolute top-full left-0 mt-1 w-40 md:w-48 bg-slate-950 border border-slate-800 rounded-lg shadow-2xl overflow-hidden z-[100] animate-in fade-in zoom-in-95 duration-100">
+                {SYMBOLS_CONFIG.map((s) => (
+                  <button
+                    key={s.symbol}
+                    onClick={() => {
+                      setSelectedSymbol(s);
+                      setIsSelectorOpen(false);
+                    }}
+                    className={`w-full text-left px-3 md:px-4 py-2 md:py-2.5 text-[8px] md:text-[10px] font-bold uppercase tracking-widest hover:bg-slate-900 transition-colors ${
+                      selectedSymbol.symbol === s.symbol ? 'text-brand-green bg-brand-green/5' : 'text-slate-400'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-1 bg-slate-950 rounded-lg p-0.5 md:p-1 border border-brand-border overflow-x-auto no-scrollbar scroll-smooth shrink min-w-0">
@@ -198,30 +236,30 @@ const Header = ({ activeView, setActiveView }: { activeView: string, setActiveVi
 
 const ScannerBar = ({ status = "Scanning..." }: { status?: string }) => {
   return (
-    <div className="h-12 border-b border-brand-border px-4 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest bg-slate-950">
-      <div className="flex items-center gap-8">
-        <div className="flex items-center gap-2 text-brand-green px-2 py-1 bg-brand-green/10 rounded border border-brand-green/30">
-          <span className="animate-pulse">{status}</span>
+    <div className="h-auto md:h-12 border-b border-brand-border px-2 md:px-4 py-2 md:py-0 flex flex-wrap md:flex-nowrap items-center justify-between text-[9px] md:text-[10px] font-bold uppercase tracking-widest bg-slate-950 gap-2 md:gap-0">
+      <div className="flex items-center gap-4 md:gap-8 overflow-x-auto md:overflow-visible no-scrollbar w-full md:w-auto">
+        <div className="flex items-center gap-2 text-brand-green px-2 py-1 bg-brand-green/10 rounded border border-brand-green/30 shrink-0">
+          <span className="animate-pulse whitespace-nowrap">{status}</span>
         </div>
-        <div className="flex items-center gap-6 text-slate-500">
+        <div className="flex items-center gap-4 md:gap-6 text-slate-500 shrink-0">
           <div className="flex flex-col">
-            <span className="text-[9px] text-slate-600">Vol 24h</span>
-            <span className="text-white font-mono text-xs tracking-tight">Active</span>
+            <span className="text-[7px] md:text-[9px] text-slate-600">Vol 24h</span>
+            <span className="text-white font-mono text-[10px] md:text-xs tracking-tight">Active</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] text-slate-600">Market</span>
-            <span className="text-white font-mono text-xs uppercase tracking-tight">SPOT / PERP</span>
+            <span className="text-[7px] md:text-[9px] text-slate-600">Market</span>
+            <span className="text-white font-mono text-[10px] md:text-xs uppercase tracking-tight">SPOT</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] text-slate-600">Session</span>
-            <div className="flex items-center gap-1 text-white text-xs">
+            <span className="text-[7px] md:text-[9px] text-slate-600">Session</span>
+            <div className="flex items-center gap-1 text-white text-[10px] md:text-xs">
               <span>London</span>
-              <ChevronDown className="w-3 h-3 text-slate-500" />
+              <ChevronDown className="w-2 md:w-3 h-2 md:h-3 text-slate-500" />
             </div>
           </div>
         </div>
       </div>
-      <div className="text-slate-600">
+      <div className="text-slate-600 hidden md:block">
         Source: <span className="text-brand-green">Binance WebSocket API</span>
       </div>
     </div>
@@ -319,8 +357,9 @@ const SidebarLeft = ({ prices, sentiment, onRefreshSentiment, isRefreshing }: {
   );
 };
 
-const MainChart = ({ prices }: { prices: Record<string, string> }) => {
-  const xauPrice = prices['XAUUSD'];
+const MainChart = ({ prices, symbol }: { prices: Record<string, string>, symbol: string }) => {
+  const currentPrice = prices[symbol];
+  const tvSymbol = symbol === 'XAUUSD' ? 'OANDA:XAUUSD' : `BINANCE:${symbol}`;
 
   return (
     <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
@@ -328,7 +367,7 @@ const MainChart = ({ prices }: { prices: Record<string, string> }) => {
       <div className="h-12 border-b border-brand-border flex items-center px-4 gap-4 bg-slate-900/30">
         <div className="flex items-center gap-2 border-r border-slate-800 pr-4">
           <div className="flex items-center gap-2 bg-slate-950 border border-brand-border px-2 py-1 rounded text-xs font-bold text-white uppercase font-mono">
-            XAU/USD
+            {symbol.includes('USDT') ? symbol.replace('USDT', '/USDT') : (symbol === 'XAUUSD' ? 'XAU/USD' : symbol)}
             <ChevronDown className="w-3 h-3 text-slate-500" />
           </div>
         </div>
@@ -358,7 +397,7 @@ const MainChart = ({ prices }: { prices: Record<string, string> }) => {
               <div className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Global Spot</div>
               <div className="flex items-baseline gap-2">
                  <span className="text-lg font-black text-white font-mono tracking-tighter tabular-nums">
-                   ${xauPrice || '---.--'}
+                   ${currentPrice || '---.--'}
                  </span>
                  <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 bg-brand-green rounded-full animate-pulse" />
@@ -371,7 +410,7 @@ const MainChart = ({ prices }: { prices: Record<string, string> }) => {
 
       {/* Real TradingView Chart */}
       <div className="flex-1 relative flex bg-slate-950 overflow-hidden">
-         <TradingViewWidget />
+         <TradingViewWidget symbol={tvSymbol} />
       </div>
 
       {/* Positions Panel */}
@@ -508,67 +547,72 @@ const CandlestickIcon = (props: any) => (
 
 // --- Strategy View Components ---
 
-const StrategyView = ({ sentiment, prices }: { sentiment: MarketSentiment; prices: Record<string, string> }) => {
-  const [stableXauPrice, setStableXauPrice] = useState<number | null>(null);
+const StrategyView = ({ sentiment, prices, selectedSymbol }: { sentiment: MarketSentiment; prices: Record<string, string>, selectedSymbol: { symbol: string, label: string } }) => {
+  const [stablePrice, setStablePrice] = useState<number | null>(null);
 
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
     if (!val) return null;
     const cleaned = val.toString().replace(/[^0-9.]/g, '');
     const parsed = parseFloat(cleaned);
-    return isNaN(parsed) || parsed < 100 ? null : parsed;
+    return isNaN(parsed) ? null : parsed;
   };
 
-  const xauPrice = getPrice('XAUUSD') || getPrice('PAXGUSDT') || 2415.50;
+  const currentPrice = getPrice(selectedSymbol.symbol) || 2415.50;
   const isBullish = sentiment.bullish > sentiment.bearish;
 
   useEffect(() => {
-    // Snapshot price on initial load to stabilize MTF analysis
-    const current = getPrice('XAUUSD') || getPrice('PAXGUSDT');
-    if (current && !stableXauPrice) {
-      setStableXauPrice(current);
-    }
-  }, [prices['XAUUSD'] === undefined]);
+    setStablePrice(null); // Reset when symbol changes
+  }, [selectedSymbol.symbol]);
 
-  const displayPrice = stableXauPrice || xauPrice;
+  useEffect(() => {
+    // Snapshot price on initial load to stabilize MTF analysis
+    const current = getPrice(selectedSymbol.symbol);
+    if (current && !stablePrice) {
+      setStablePrice(current);
+    }
+  }, [prices[selectedSymbol.symbol] === undefined, selectedSymbol.symbol]);
+
+  const displayPrice = stablePrice || currentPrice;
+  const symbolLabel = selectedSymbol.symbol.includes('USDT') ? selectedSymbol.symbol.replace('USDT', '') : selectedSymbol.symbol;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-6 no-scrollbar">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar">
+      <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
         {/* Top Header Analysis */}
-        <div className="flex justify-between items-end border-b border-slate-800 pb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-800 pb-4 md:pb-6 gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-black text-white tracking-widest uppercase italic">Multi-Timeframe Analysis</h1>
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+              <h1 className="text-xl md:text-3xl font-black text-white tracking-widest uppercase italic">MTF {selectedSymbol.label}</h1>
               <div className="flex items-center gap-1.5 px-2 py-0.5 bg-brand-green/10 rounded-full border border-brand-green/20">
                 <div className="w-1 h-1 rounded-full bg-brand-green animate-pulse" />
-                <span className="text-[8px] font-black text-brand-green uppercase">ANALYSIS STABILIZED</span>
+                <span className="text-[7px] md:text-[8px] font-black text-brand-green uppercase">ANALYSIS STABILIZED</span>
               </div>
             </div>
-            <p className="text-brand-green font-mono text-[10px] uppercase tracking-[0.3em]">OANDA Institutional Confluence HUB</p>
+            <p className="text-brand-green font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em]">Institutional Confluence HUB</p>
           </div>
-          <div className="text-right">
-             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic">OANDA SPOT HUB</div>
-             <div className="text-2xl font-black text-white font-mono tracking-tighter">
-                ${xauPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          <div className="text-left md:text-right">
+             <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic">SPOT TICKER</div>
+             <div className="text-xl md:text-2xl font-black text-white font-mono tracking-tighter">
+                ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
              </div>
           </div>
         </div>
 
         {/* The 4H - 1H - 15M Logic Flow */}
-        <div className="flex items-center justify-between gap-4 py-8 relative">
-          <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-slate-800 -z-10" />
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-4 md:py-8 relative">
+          <div className="absolute top-0 bottom-0 left-1/2 md:top-1/2 md:bottom-auto md:left-0 md:right-0 w-[1px] md:h-[1px] md:w-full bg-slate-800 -z-10" />
           
           <StrategyCard 
             tf="4H" 
             title="Macro Direction" 
             items={[
               { label: "DIRECTION", status: isBullish ? "STRONG BULLISH" : "BEARISH BIAS", color: isBullish ? "text-brand-green" : "text-brand-red" },
-              { label: "KEY LEVEL", status: `XAU @ ${(displayPrice - 32).toFixed(1)}`, color: "text-white" }
+              { label: "KEY LEVEL", status: `${symbolLabel} @ ${(displayPrice * 0.985).toFixed(2)}`, color: "text-white" }
             ]}
           />
 
-          <div className="text-slate-800 text-3xl font-bold">---</div>
+          <div className="text-slate-800 text-xl md:text-3xl font-bold rotate-90 md:rotate-0">---</div>
 
           <StrategyCard 
             tf="1H" 
@@ -580,37 +624,37 @@ const StrategyView = ({ sentiment, prices }: { sentiment: MarketSentiment; price
             ]}
           />
 
-          <div className="text-slate-800 text-3xl font-bold">---</div>
+          <div className="text-slate-800 text-xl md:text-3xl font-bold rotate-90 md:rotate-0">---</div>
 
           <StrategyCard 
             tf="15M" 
             title="Execution Zone" 
             items={[
-              { label: "CONFIRMATION", status: "FVG MITIGATED", color: "text-brand-green" },
-              { label: "TRIGGER", status: `XAU @ ${displayPrice.toFixed(1)}`, color: "text-white" }
+              { label: "CONFIRMATION", status: "ZONE MITIGATED", color: "text-brand-green" },
+              { label: "TRIGGER", status: `${symbolLabel} @ ${displayPrice.toFixed(2)}`, color: "text-white" }
             ]}
           />
         </div>
 
         {/* Technical Sub-analysis (OB, FVG, Liquidity) */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           <TechnicalBox 
             label="OB (ORDER BLOCK)" 
-            desc={`H1 Demand Zone identifies at ${(displayPrice - 5.5).toFixed(1)} - ${(displayPrice - 2.0).toFixed(1)}. Institutional mitigation in progress.`}
+            desc={`H1 Demand Zone identifies at ${(displayPrice * 0.998).toFixed(2)} - ${(displayPrice * 1.002).toFixed(2)}. Institutional mitigation in progress.`}
             status="REJECTED"
             color="border-brand-green/30 text-brand-green"
           />
           <TechnicalBox 
             label="FVG (FAIR VALUE GAP)" 
-            desc={`Price imbalance detected near ${(displayPrice + 12.5).toFixed(1)}. Market magnet engaged for next liquidity cycle.`}
-            status="MAGNET"
+            desc={`Imbalance gap detected at ${(displayPrice * 1.005).toFixed(2)}. Price expected to gravitate towards this liquidity pocket.`}
+            status="IMBALANCE"
             color="border-yellow-500/30 text-yellow-500"
           />
           <TechnicalBox 
             label="LIQUIDITY" 
-            desc={`Buy-side liquidity resting above ${(displayPrice + 45.0).toFixed(1)} swing high. Targeted for capture.`}
-            status="POI REACHED"
-            color="border-rose-500/30 text-rose-500"
+            desc={`Buy-side liquidity resting above ${(displayPrice * 1.012).toFixed(2)}. Target zone for institutional draw on liquidity.`}
+            status="TARGETING"
+            color="border-brand-red/30 text-brand-red"
           />
         </div>
 
@@ -661,14 +705,14 @@ const StrategyView = ({ sentiment, prices }: { sentiment: MarketSentiment; price
 };
 
 const StrategyCard = ({ tf, title, items }: { tf: string, title: string, items: { label: string, status: string, color: string }[] }) => (
-  <div className="w-64 bg-slate-900/60 border border-slate-800 rounded-xl p-4 backdrop-blur-md">
-    <div className="text-4xl font-black text-white mb-1">{tf}</div>
-    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2 mb-4">{title}</div>
-    <div className="space-y-3">
+  <div className="w-full md:w-64 bg-slate-900/60 border border-slate-800 rounded-xl p-3 md:p-4 backdrop-blur-md">
+    <div className="text-2xl md:text-4xl font-black text-white mb-0.5 md:mb-1">{tf}</div>
+    <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-1 md:pb-2 mb-3 md:mb-4">{title}</div>
+    <div className="space-y-2 md:space-y-3">
       {items.map((item, i) => (
         <div key={i}>
-          <div className="text-[8px] font-black text-slate-600 uppercase tracking-tighter mb-1">{item.label}</div>
-          <div className={`text-xs font-bold leading-none ${item.color}`}>{item.status}</div>
+          <div className="text-[7px] md:text-[8px] font-black text-slate-600 uppercase tracking-tighter mb-0.5 md:mb-1">{item.label}</div>
+          <div className={`text-[10px] md:text-xs font-bold leading-none ${item.color}`}>{item.status}</div>
         </div>
       ))}
     </div>
@@ -687,183 +731,177 @@ const TechnicalBox = ({ label, desc, status, color }: { label: string, desc: str
 
 // --- Trading Advice View Components ---
 
-const TradingAdviceView = ({ sentiment, prices }: { sentiment: MarketSentiment; prices: Record<string, string> }) => {
+const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: MarketSentiment; prices: Record<string, string>, selectedSymbol: { symbol: string, label: string } }) => {
   const [stablePrice, setStablePrice] = useState<number | null>(null);
 
-  // Enhanced parsing to handle various formats and ensure we have a valid number
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
     if (!val) return null;
-    // Remove anything that isn't a digit or decimal point
     const cleaned = val.toString().replace(/[^0-9.]/g, '');
     const parsed = parseFloat(cleaned);
-    return isNaN(parsed) || parsed < 100 ? null : parsed; // Sanity check for gold
+    return isNaN(parsed) ? null : parsed;
   };
 
-  const currentPriceRaw = getPrice('XAUUSD') || getPrice('PAXGUSDT') || 2415.50;
+  const currentPriceRaw = getPrice(selectedSymbol.symbol) || 2415.50;
   const isBullish = sentiment.bullish > sentiment.bearish;
 
   useEffect(() => {
-    // Snapshot price once to stabilize advice levels
-    const current = getPrice('XAUUSD') || getPrice('PAXGUSDT');
+    setStablePrice(null); 
+  }, [selectedSymbol.symbol]);
+
+  useEffect(() => {
+    const current = getPrice(selectedSymbol.symbol);
     if (current && !stablePrice) {
       setStablePrice(current);
     }
-  }, [prices['XAUUSD'] === undefined]);
+  }, [prices[selectedSymbol.symbol] === undefined, selectedSymbol.symbol]);
   
-  // Calculate stable TP/SL for the execution plan
   const planEntry = stablePrice || currentPriceRaw;
   const entry = planEntry;
-  const sl = isBullish ? entry - 12.5 : entry + 12.5;
-  const tp1 = isBullish ? entry + 25 : entry - 25;
-  const tp2 = isBullish ? entry + 60 : entry - 60;
+  const scale = entry > 500 ? 1 : 0.01;
+  const sl = isBullish ? entry - (12.5 * scale) : entry + (12.5 * scale);
+  const tp1 = isBullish ? entry + (25 * scale) : entry - (25 * scale);
+  const tp2 = isBullish ? entry + (60 * scale) : entry - (60 * scale);
+  const tvSymbol = selectedSymbol.symbol === 'XAUUSD' ? 'OANDA:XAUUSD' : `BINANCE:${selectedSymbol.symbol}`;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-3 md:p-6 no-scrollbar">
-      <div className="max-w-6xl mx-auto space-y-4 md:space-y-8">
-        {/* Page Header */}
-        <div className="border-b border-slate-800 pb-4 md:pb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Zap className="w-8 h-8 md:w-10 md:h-10 text-brand-green fill-brand-green" /> 
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar">
+      <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+        
+        {/* Header Section */}
+        <div className="border-b border-slate-800 pb-6 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="w-10 h-10 md:w-14 md:h-14 bg-brand-green/10 rounded-full flex items-center justify-center border border-brand-green/20">
+              <Zap className="w-6 h-6 md:w-8 md:h-8 text-brand-green fill-brand-green" />
+            </div>
             <div>
-              <h1 className="text-xl md:text-3xl font-black text-white tracking-widest uppercase italic">XAU/USD Trading Advice</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-slate-500 font-mono text-[8px] md:text-xs uppercase tracking-widest">Live Sync with Global Spot Market</p>
+              <h1 className="text-xl md:text-4xl font-black text-white tracking-widest uppercase italic leading-none">{selectedSymbol.label} Advice</h1>
+              <div className="flex items-center gap-2 mt-2">
+                <p className="text-slate-500 font-mono text-[8px] md:text-xs uppercase tracking-widest">Global Institutional Hub</p>
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-brand-green/10 rounded-full border border-brand-green/20">
                   <div className="w-1 h-1 rounded-full bg-brand-green" />
-                  <span className="text-[7px] md:text-[9px] font-black text-brand-green uppercase">PLAN STABILIZED</span>
+                  <span className="text-[7px] md:text-[9px] font-black text-brand-green uppercase whitespace-nowrap">PLAN LOCKED</span>
                 </div>
               </div>
             </div>
           </div>
-          <div className="flex flex-col md:items-end w-full md:w-auto">
-             <div className="bg-brand-green/10 border border-brand-green/20 px-4 py-2 rounded-xl flex items-center justify-between md:justify-end gap-6">
-                <div className="text-left">
-                  <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest italic font-mono">XAU/USD Spot Price</div>
-                  <div className="text-lg md:text-2xl font-black text-white font-mono animate-in fade-in slide-in-from-bottom-1 uppercase">
-                    ${currentPriceRaw.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </div>
+          
+          <div className="w-full md:w-auto bg-brand-green/10 border border-brand-green/20 px-6 py-3 rounded-2xl flex items-center justify-between gap-8 shadow-2xl">
+             <div className="text-left">
+               <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic font-mono mb-1">{selectedSymbol.symbol} Spot</div>
+               <div className="text-xl md:text-3xl font-black text-white font-mono leading-none tracking-tighter">
+                 ${currentPriceRaw.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+               </div>
+             </div>
+             <div className="flex flex-col items-end">
+                <div className="flex items-center gap-1.5 text-[8px] md:text-[10px] font-black text-brand-green uppercase tracking-widest">
+                   <div className="w-1.5 h-1.5 bg-brand-green rounded-full animate-ping" />
+                   FEED ACTIVE
                 </div>
-                <div className="flex flex-col items-end">
-                   <div className="flex items-center gap-1 text-[8px] font-black text-brand-green uppercase tracking-widest">
-                      <div className="w-1 h-1 bg-brand-green rounded-full animate-ping" />
-                      Live Feed
-                   </div>
-                   <div className="text-xs font-bold text-slate-400">1s Delay</div>
-                </div>
+                <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">1s Pulse</div>
              </div>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-12 gap-4 md:gap-8">
-           {/* Chart Column (Optional but adds value) */}
-           <div className="lg:col-span-12 h-64 md:h-80 bg-slate-900/50 rounded-2xl overflow-hidden border border-slate-800">
-              <TradingViewWidget symbol="OANDA:XAUUSD" />
-           </div>
-          {/* Social Sentiment Column */}
-          <div className="lg:col-span-4 space-y-4 md:space-y-6">
-            <div className="bg-slate-900/40 border border-slate-800 rounded-xl md:rounded-2xl p-4 md:p-6">
-              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 md:mb-6 border-b border-slate-800 pb-2 md:pb-3 flex items-center justify-between">
+        {/* Main Content Grid */}
+        <div className="grid lg:grid-cols-12 gap-6 md:gap-8">
+          
+          {/* Sidebar Area: Analysis & Execution */}
+          <div className="lg:col-span-4 space-y-6 md:space-y-8">
+            
+            {/* Box 1: Sentiment Metrics */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors">
+              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 border-b border-slate-800 pb-3 flex items-center justify-between">
                 <span>Social AI Effect Metrics</span>
-                <span className="text-brand-green">X / Truth</span>
+                <span className="text-brand-green">CONVICTION</span>
               </div>
               
-              <div className="space-y-8">
+              <div className="space-y-6">
                 <div>
                   <div className="flex justify-between items-end mb-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Bullish Conviction</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Bullish Conviction</span>
                     <span className="text-brand-green font-mono text-xl font-black">{sentiment.bullish}%</span>
                   </div>
-                  <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-green shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${sentiment.bullish}%` }} />
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-green shadow-[0_0_10px_rgba(16,185,129,0.5)]" style={{ width: `${sentiment.bullish}%` }} />
                   </div>
                 </div>
 
                 <div>
                   <div className="flex justify-between items-end mb-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Bearish Resistance</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Bearish Resistance</span>
                     <span className="text-brand-red font-mono text-xl font-black">{sentiment.bearish}%</span>
                   </div>
-                  <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-red shadow-[0_0_8px_rgba(239,68,68,0.5)]" style={{ width: `${sentiment.bearish}%` }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Market Neutrality</span>
-                    <span className="text-orange-400 font-mono text-xl font-black">{sentiment.neutral}%</span>
-                  </div>
-                  <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.5)]" style={{ width: `${sentiment.neutral}%` }} />
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-red shadow-[0_0_10px_rgba(239,68,68,0.5)]" style={{ width: `${sentiment.bearish}%` }} />
                   </div>
                 </div>
               </div>
 
               <div className="mt-8 p-4 bg-slate-950 border border-slate-800 rounded-xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-100 transition-opacity">
-                  <Info className="w-3 h-3 text-brand-green" />
+                <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
+                  <Info className="w-4 h-4 text-brand-green" />
                 </div>
-                <div className="text-[10px] font-black text-brand-green uppercase mb-2">AI Summary Output</div>
-                <p className="text-[11px] text-slate-400 leading-relaxed italic font-mono">
+                <div className="text-[10px] font-black text-brand-green uppercase mb-2 tracking-widest flex items-center gap-2">
+                  <div className="w-1 h-1 bg-brand-green rounded-full" />
+                  AI Context Analysis
+                </div>
+                <p className="text-[12px] text-slate-400 leading-relaxed italic font-mono">
                   "{sentiment.summary}"
                 </p>
               </div>
             </div>
+
+            {/* Box 2: Execution Framework */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors">
+              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 border-b border-slate-800 pb-3 flex items-center justify-between">
+                <span>Execution Framework</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-black ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
+                    {isBullish ? 'BULLISH' : 'BEARISH'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-4">
+                <EntryBox label="Protocol Entry" value={`$${entry.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Institutional Trigger" color="text-white" />
+                <EntryBox label="Hard Stop Loss" value={`$${sl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Risk Cut-off" color="text-brand-red" />
+                <div className="grid grid-cols-2 gap-4">
+                  <EntryBox label="Target One" value={`$${tp1.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Partial Take Profit" color="text-brand-green" />
+                  <EntryBox label="Target Two" value={`$${tp2.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Max Extension" color="text-brand-green" />
+                </div>
+              </div>
+
+              <button className="w-full mt-6 py-4 bg-brand-green text-slate-950 font-black text-xs uppercase tracking-[0.2em] rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-brand-green/10">
+                INITIATE PROTOCOL
+              </button>
+            </div>
           </div>
 
-          {/* Entry Suggestion Column */}
-          <div className="lg:col-span-8 space-y-4 md:space-y-6">
-            <div className="bg-slate-900/60 border border-brand-green/20 rounded-xl md:rounded-2xl p-4 md:p-8 relative overflow-hidden backdrop-blur-xl">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-brand-green/5 blur-3xl -z-10" />
-               
-               <div className="flex items-center justify-between mb-6 md:mb-8">
-                 <div className="flex items-center gap-2 md:gap-3">
-                    <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full animate-pulse ${isBullish ? 'bg-brand-green' : 'bg-brand-red'}`} />
-                    <h2 className="text-sm md:text-2xl font-black text-white tracking-widest uppercase">
-                       {isBullish ? 'Institutional LONG' : 'Institutional SHORT'}
-                    </h2>
-                 </div>
-                 <div className="text-[8px] md:text-[10px] font-mono text-slate-500 uppercase">ICT/SMC</div>
-               </div>
-
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
-                  <EntryBox label="Entry Level" value={entry.toFixed(2)} sub="Execution Zone" color="text-white" />
-                  <EntryBox label="Stop Loss" value={sl.toFixed(2)} sub="Invalidation Point" color="text-brand-red" />
-                  <div className="flex flex-col gap-4">
-                    <EntryBox label="Take Profit 1" value={tp1.toFixed(2)} sub="Partial TP (50%)" color="text-brand-green" />
-                    <EntryBox label="Take Profit 2" value={tp2.toFixed(2)} sub="Moonbag Target" color="text-brand-green" />
-                  </div>
-               </div>
-
-               <div className="mt-12 grid md:grid-cols-2 gap-6 pt-8 border-t border-slate-800">
-                  <div className="space-y-3">
-                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Strategy Application</div>
-                    <div className="flex flex-wrap gap-2">
-                       <StrategyTag label="MSS DETECTED" active />
-                       <StrategyTag label="FVG MITIGATION" active />
-                       <StrategyTag label="LD SWEEP" />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-end">
-                    <button className="px-8 py-4 bg-brand-green text-slate-950 font-black text-xs uppercase tracking-[0.2em] rounded-xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-brand-green/10">
-                      COPY ENTRY PLAN
-                    </button>
-                  </div>
-               </div>
+          {/* Chart Area */}
+          <div className="lg:col-span-8 flex flex-col gap-6 md:gap-8">
+            <div className="flex-1 min-h-[350px] md:min-h-[600px] bg-slate-900/50 rounded-3xl overflow-hidden border border-slate-800 relative group">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-brand-green/30 to-transparent z-10" />
+              <TradingViewWidget symbol={tvSymbol} />
             </div>
 
-            {/* Disclaimer */}
-            <div className="p-4 border border-slate-800 rounded-xl bg-slate-900/20 flex gap-4 items-start">
-               <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5 shrink-0" />
+            {/* Disclaimer & Risk Area */}
+            <div className="p-6 border border-slate-800 rounded-2xl bg-slate-900/20 flex flex-col md:flex-row gap-6 items-start">
+               <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
+                 <AlertCircle className="w-6 h-6 text-yellow-500 shrink-0" />
+               </div>
                <div>
-                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Risk Management Protocol</div>
-                  <p className="text-[10px] text-slate-500 font-mono leading-relaxed">
-                    Trading suggestion is derived from current social effect sentiment + SMC technical confluence. Always use proper lot sizing. SL is mandatory to prevent account depletion on news spikes.
+                  <div className="text-[12px] font-black text-slate-200 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <div className="w-1 h-1 bg-yellow-500 rounded-full" />
+                    Risk Management Protocol v4.2
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-mono leading-loose uppercase tracking-tighter">
+                    Trading suggestions are derived from social effect sentiment + institutional technical confluence (SMC/ICT). Market volatility can lead to rapid capital loss. Always use proper lot sizing relative to account equity. Stop Loss implementation is mandatory to mitigate downside risk during high-impact news cycles.
                   </p>
                </div>
             </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -977,7 +1015,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
                                <span className="text-[7px] font-black text-brand-green uppercase">SIGNAL LOCKED</span>
                             </div>
                          </div>
-                         <div className="grid grid-cols-3 gap-2">
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <div className="bg-slate-900 border border-slate-800 p-2 rounded flex flex-col items-center">
                                <span className="text-[8px] font-bold text-slate-600 uppercase">OANDA Entry</span>
                                <span className="text-[12px] font-black text-white font-mono">${setup.entry}</span>
@@ -1054,6 +1092,7 @@ const TerminalStat = ({ label, value }: { label: string, value: string }) => (
 
 export default function App() {
   const [activeView, setActiveView] = useState<'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional'>('terminal');
+  const [selectedSymbol, setSelectedSymbol] = useState(SYMBOLS_CONFIG[0]); // Default to XAUUSD
   const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [isConnected, setIsConnected] = useState(false);
@@ -1070,7 +1109,7 @@ export default function App() {
     setIsRefreshingSentiment(true);
     try {
       // Fetch both in parallel but handle individual failures
-      const sentData = await analyzeSocialSentiment('Gold XAUUSD').catch(e => {
+      const sentData = await analyzeSocialSentiment(selectedSymbol.label).catch(e => {
         console.error("Caught sentiment error:", e);
         return { bullish: 50, bearish: 50, neutral: 0, summary: "Service temporarily unavailable", isMock: true };
       });
@@ -1094,7 +1133,7 @@ export default function App() {
     // Refresh every 5 minutes
     const interval = setInterval(fetchAIInsights, 300000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedSymbol]);
 
   // Fetch real-time XAU/USD from Global Spot API (via local proxy)
   useEffect(() => {
@@ -1165,11 +1204,11 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans bg-slate-950">
-      <Header activeView={activeView} setActiveView={setActiveView} />
+      <Header activeView={activeView} setActiveView={setActiveView} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} />
       <ScannerBar status={isConnected ? "WebSocket Connected" : "Connecting..."} />
       {activeView === 'terminal' ? (
         <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          <div className="flex flex-col md:flex-row flex-1 overflow-auto md:overflow-hidden">
+          <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden scroll-smooth">
             <div className="w-full md:w-64 md:shrink-0 flex flex-col md:overflow-auto border-b md:border-b-0 md:border-r border-brand-border">
               <SidebarLeft 
                 prices={prices} 
@@ -1178,18 +1217,18 @@ export default function App() {
                 isRefreshing={isRefreshingSentiment}
               />
             </div>
-            <div className="flex-1 min-h-[300px] md:min-h-0 relative">
-              <MainChart prices={prices} />
+            <div className="flex-1 min-h-[350px] md:min-h-0 relative shrink-0">
+              <MainChart prices={prices} symbol={selectedSymbol.symbol} />
             </div>
-            <div className="w-full md:w-64 md:shrink-0 flex flex-col md:overflow-auto border-t md:border-t-0 md:border-l border-brand-border">
+            <div className="w-full md:w-64 md:shrink-0 flex flex-col md:overflow-auto border-t md:border-t-0 md:border-l border-brand-border pb-10 md:pb-0">
               <SidebarRight calendar={calendar} />
             </div>
           </div>
         </main>
       ) : activeView === 'strategy' ? (
-        <StrategyView sentiment={sentiment} prices={prices} />
+        <StrategyView sentiment={sentiment} prices={prices} selectedSymbol={selectedSymbol} />
       ) : activeView === 'advice' ? (
-        <TradingAdviceView sentiment={sentiment} prices={prices} />
+        <TradingAdviceView sentiment={sentiment} prices={prices} selectedSymbol={selectedSymbol} />
       ) : activeView === 'institutional' ? (
         <InstitutionalView prices={prices} />
       ) : (
