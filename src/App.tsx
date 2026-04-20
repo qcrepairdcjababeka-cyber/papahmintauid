@@ -889,7 +889,6 @@ const StrategyTag = ({ label, active }: { label: string, active?: boolean }) => 
 const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
   const [setups, setSetups] = useState<InstitutionalSetup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [stableXauSpot, setStableXauSpot] = useState<number | null>(null);
 
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
@@ -899,28 +898,13 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
     return isNaN(parsed) || parsed < 100 ? null : parsed;
   };
 
-  const currentXauSpot = getPrice('XAUUSD') || getPrice('PAXGUSDT');
-
-  const calculateInstitutionalLevels = (bias: string, spot: number | null) => {
-    if (!spot || spot < 100) return null;
-    const isLong = bias === 'LONG';
-    // Rounding to nearest 0.1 for institutional precision and stability
-    return {
-      entry: isLong ? (spot - 1.5).toFixed(1) : (spot + 1.2).toFixed(1),
-      sl: isLong ? (spot - 8.0).toFixed(1) : (spot + 7.5).toFixed(1),
-      tp: isLong ? (spot + 15.0).toFixed(1) : (spot - 14.0).toFixed(1)
-    };
-  };
-
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await fetchInstitutionalSetups();
+        const currentPrice = getPrice('XAUUSD') || getPrice('PAXGUSDT') || undefined;
+        // fetchInstitutionalSetups now handles level stabilization internally via service logic
+        const data = await fetchInstitutionalSetups(currentPrice);
         setSetups(data);
-        
-        // Snapshot the price at the time of loading the plan to prevent jitter
-        const current = getPrice('XAUUSD') || getPrice('PAXGUSDT');
-        if (current) setStableXauSpot(current);
       } catch (error) {
         console.error("Institutional data load failed:", error);
       } finally {
@@ -928,7 +912,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
       }
     };
     load();
-  }, [prices['XAUUSD'] === undefined]); // Re-fetch only if initial price was missing
+  }, [prices['XAUUSD'] === undefined]); // Re-fetch only if initial spot price was missing
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-3 md:p-6 font-sans">
@@ -963,9 +947,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
         ) : (
           <div className="grid md:grid-cols-2 gap-6">
             {setups.map((setup, i) => {
-              const levels = setup.ticker.includes('GOLD') || setup.ticker.includes('XAU') 
-                ? calculateInstitutionalLevels(setup.bias, stableXauSpot || currentXauSpot) 
-                : null;
+              const hasLevels = setup.entry && setup.sl && setup.tp;
 
               return (
                 <div key={i} className="bg-slate-900/40 border border-slate-800 rounded-2xl md:rounded-3xl p-4 md:p-8 hover:border-slate-700 transition-all group relative overflow-hidden flex flex-col">
@@ -986,7 +968,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
                   </div>
 
                   <div className="space-y-6 flex-1">
-                    {levels && (
+                    {hasLevels && (
                       <div className="bg-slate-950/50 border border-slate-800 p-4 rounded-xl space-y-3 relative group/plan">
                          <div className="flex justify-between items-center">
                             <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">Institutional Entry Targets</div>
@@ -997,16 +979,16 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
                          </div>
                          <div className="grid grid-cols-3 gap-2">
                             <div className="bg-slate-900 border border-slate-800 p-2 rounded flex flex-col items-center">
-                               <span className="text-[8px] font-bold text-slate-600 uppercase">Entry</span>
-                               <span className="text-[12px] font-black text-white font-mono">${levels.entry}</span>
+                               <span className="text-[8px] font-bold text-slate-600 uppercase">OANDA Entry</span>
+                               <span className="text-[12px] font-black text-white font-mono">${setup.entry}</span>
                             </div>
                             <div className="bg-slate-900 border border-brand-red/20 p-2 rounded flex flex-col items-center">
-                               <span className="text-[8px] font-bold text-brand-red uppercase">Stop Loss</span>
-                               <span className="text-[12px] font-black text-brand-red font-mono">${levels.sl}</span>
+                               <span className="text-[8px] font-bold text-brand-red uppercase">OANDA SL</span>
+                               <span className="text-[12px] font-black text-brand-red font-mono">${setup.sl}</span>
                             </div>
                             <div className="bg-slate-900 border border-brand-green/20 p-2 rounded flex flex-col items-center">
-                               <span className="text-[8px] font-bold text-brand-green uppercase">Take Profit</span>
-                               <span className="text-[12px] font-black text-brand-green font-mono">${levels.tp}</span>
+                               <span className="text-[8px] font-bold text-brand-green uppercase">OANDA TP</span>
+                               <span className="text-[12px] font-black text-brand-green font-mono">${setup.tp}</span>
                             </div>
                          </div>
                       </div>

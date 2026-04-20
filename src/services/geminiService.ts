@@ -25,6 +25,9 @@ export interface InstitutionalSetup {
   institutionalFlow: string;
   keyLevels: string[];
   catalyst: string;
+  entry?: string;
+  sl?: string;
+  tp?: string;
 }
 
 // --- Caching & Cooldown Logic ---
@@ -188,7 +191,7 @@ export async function fetchUSEconomicCalendar(): Promise<CalendarEvent[]> {
   }
 }
 
-export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> {
+export async function fetchInstitutionalSetups(currentPrice?: number): Promise<InstitutionalSetup[]> {
   const cached = getCache<InstitutionalSetup[]>(CACHE_KEYS.INSTITUTIONAL);
   
   if (isCoolingDown()) {
@@ -199,7 +202,10 @@ export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> 
         bias: 'LONG', 
         institutionalFlow: 'Institutional demand remaining high due to macro factors.', 
         keyLevels: ['$2,380', '$2,410'], 
-        catalyst: 'Macro Hedge (Cached Data)' 
+        catalyst: 'Macro Hedge (Cached Data)',
+        entry: '2412.5',
+        sl: '2395.0',
+        tp: '2465.0'
       }
     ];
   }
@@ -211,7 +217,8 @@ export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> 
       model: "gemini-3-flash-preview",
       contents: `Perform a high-level scan of institutional trading setups and market convictions typically found on Bloomberg Terminal for major global assets. 
       Focus on where large institutional funds (Smart Money) are positioning. 
-      Return a list of setups including ticker, bias, institutional flow description, key levels, and macro catalysts.`,
+      Return a list of setups including ticker, bias, institutional flow description, key levels, and macro catalysts.
+      Crucially, provide a FIXED trading plan for each: entry level, stop loss (sl), and take profit (tp) based on current spot prices.`,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
@@ -224,15 +231,33 @@ export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> 
               bias: { type: Type.STRING, enum: ["LONG", "SHORT", "NEUTRAL"] },
               institutionalFlow: { type: Type.STRING },
               keyLevels: { type: Type.ARRAY, items: { type: Type.STRING } },
-              catalyst: { type: Type.STRING }
+              catalyst: { type: Type.STRING },
+              entry: { type: Type.STRING },
+              sl: { type: Type.STRING },
+              tp: { type: Type.STRING }
             },
-            required: ["ticker", "bias", "institutionalFlow", "keyLevels", "catalyst"]
+            required: ["ticker", "bias", "institutionalFlow", "keyLevels", "catalyst", "entry", "sl", "tp"]
           }
         }
       }
     });
 
-    const data = JSON.parse(response.text);
+    let data: InstitutionalSetup[] = JSON.parse(response.text);
+
+    // If currentPrice is provided, we use it to calculate fixed levels for XAU/GOLD setups 
+    // to ensure they are synchronized with the OANDA feed at the moment of fetch.
+    if (currentPrice && currentPrice > 100) {
+      data = data.map(setup => {
+        if (setup.ticker.includes('GOLD') || setup.ticker.includes('XAU')) {
+          const isLong = setup.bias === 'LONG';
+          setup.entry = isLong ? (currentPrice - 1.5).toFixed(1) : (currentPrice + 1.2).toFixed(1);
+          setup.sl = isLong ? (currentPrice - 8.0).toFixed(1) : (currentPrice + 7.5).toFixed(1);
+          setup.tp = isLong ? (currentPrice + 15.0).toFixed(1) : (currentPrice - 14.0).toFixed(1);
+        }
+        return setup;
+      });
+    }
+
     setCache(CACHE_KEYS.INSTITUTIONAL, data);
     return data;
   } catch (error: any) {
@@ -246,7 +271,10 @@ export async function fetchInstitutionalSetups(): Promise<InstitutionalSetup[]> 
         bias: 'LONG', 
         institutionalFlow: 'Central banks maintaining accumulation (Cached).', 
         keyLevels: ['$2,380', '$2,410'], 
-        catalyst: 'Middle East risk (Historical Data)' 
+        catalyst: 'Middle East risk (Historical Data)',
+        entry: '2398.0',
+        sl: '2375.0',
+        tp: '2450.0'
       }
     ];
   }
