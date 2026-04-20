@@ -61,20 +61,27 @@ const SYMBOLS_CONFIG = [
 ];
 
 // --- TradingView Widget Component ---
-const TradingViewWidget = ({ symbol = "OANDA:XAUUSD" }: { symbol?: string }) => {
+const TradingViewWidget = ({ symbol = "OANDA:XAUUSD", interval = "15" }: { symbol?: string, interval?: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Only load the script if it hasn't been loaded
     const scriptId = "tradingview-widget-script";
     let script = document.getElementById(scriptId) as HTMLScriptElement;
     
     const initializeWidget = () => {
       if (window.TradingView && containerRef.current) {
+        containerRef.current.innerHTML = "";
+        const widgetId = `tv_widget_${Math.random().toString(36).substring(7)}`;
+        const widgetContainer = document.createElement("div");
+        widgetContainer.id = widgetId;
+        widgetContainer.style.height = "100%";
+        widgetContainer.style.width = "100%";
+        containerRef.current.appendChild(widgetContainer);
+
         new window.TradingView.widget({
           autosize: true,
           symbol,
-          interval: "15",
+          interval,
           timezone: "Etc/UTC",
           theme: "dark",
           style: "1",
@@ -82,7 +89,7 @@ const TradingViewWidget = ({ symbol = "OANDA:XAUUSD" }: { symbol?: string }) => 
           toolbar_bg: "#020617",
           enable_publishing: false,
           allow_symbol_change: true,
-          container_id: containerRef.current.id,
+          container_id: widgetId,
           studies: ["MASimple@tv-basicstudies"],
           backgroundColor: "#020617",
           gridColor: "rgba(255, 255, 255, 0.05)",
@@ -100,7 +107,7 @@ const TradingViewWidget = ({ symbol = "OANDA:XAUUSD" }: { symbol?: string }) => 
     } else {
       initializeWidget();
     }
-  }, [symbol]);
+  }, [symbol, interval]);
 
   return (
     <div id="tradingview_chart" ref={containerRef} className="w-full h-full" />
@@ -122,7 +129,7 @@ const SNR_LEVELS: SNRLevel[] = [
 
 const Header = ({ activeView, setActiveView, selectedSymbol, setSelectedSymbol }: { 
   activeView: string, 
-  setActiveView: (v: 'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional') => void,
+  setActiveView: (v: 'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional' | 'sentiment') => void,
   selectedSymbol: { symbol: string, label: string },
   setSelectedSymbol: (s: { symbol: string, label: string }) => void
 }) => {
@@ -216,6 +223,14 @@ const Header = ({ activeView, setActiveView, selectedSymbol, setSelectedSymbol }
             }`}
           >
             TEST
+          </button>
+          <button 
+            onClick={() => setActiveView('sentiment')}
+            className={`px-2 md:px-3 py-1 md:py-1.5 text-[9px] md:text-[10px] font-bold uppercase tracking-widest rounded-md transition-all whitespace-nowrap ${
+              activeView === 'sentiment' ? 'bg-brand-green/20 text-brand-green border border-brand-green/30' : 'text-slate-500 hover:text-white'
+            }`}
+          >
+            SENT
           </button>
         </div>
       </div>
@@ -360,13 +375,28 @@ const SidebarLeft = ({ prices, sentiment, onRefreshSentiment, isRefreshing }: {
 const MainChart = ({ prices, symbol }: { prices: Record<string, string>, symbol: string }) => {
   const currentPrice = prices[symbol];
   const tvSymbol = symbol === 'XAUUSD' ? 'OANDA:XAUUSD' : `BINANCE:${symbol}`;
+  const [activeTf, setActiveTf] = useState('15m');
+  const [isTfDropdownOpen, setIsTfDropdownOpen] = useState(false);
+
+  const timeframes = [
+    { label: '1m', value: '1' },
+    { label: '5m', value: '5' },
+    { label: '15m', value: '15' },
+    { label: '1h', value: '60' },
+    { label: '4h', value: '240' },
+    { label: '1D', value: 'D' },
+    { label: '1W', value: 'W' },
+  ];
+
+  const quickTfs = ['1m', '15m', '1h', '4h', '1D'];
+  const activeInterval = timeframes.find(t => t.label === activeTf)?.value || '15';
 
   return (
     <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
       {/* Toolbars */}
       <div className="h-12 border-b border-brand-border flex items-center px-4 gap-4 bg-slate-900/30">
         <div className="flex items-center gap-2 border-r border-slate-800 pr-4">
-          <div className="flex items-center gap-2 bg-slate-950 border border-brand-border px-2 py-1 rounded text-xs font-bold text-white uppercase font-mono">
+          <div className="flex items-center gap-2 bg-slate-950 border border-brand-border px-2 py-1 rounded text-xs font-bold text-white uppercase font-mono cursor-pointer hover:border-brand-green transition-colors">
             {symbol.includes('USDT') ? symbol.replace('USDT', '/USDT') : (symbol === 'XAUUSD' ? 'XAU/USD' : symbol)}
             <ChevronDown className="w-3 h-3 text-slate-500" />
           </div>
@@ -374,14 +404,44 @@ const MainChart = ({ prices, symbol }: { prices: Record<string, string>, symbol:
 
         <div className="flex items-center gap-4 flex-1">
           <div className="flex items-center gap-1 border-r border-slate-800 pr-4">
-            {['1m', '15m', '1h', '4h', '1D'].map((tf) => (
+            {quickTfs.map((tf) => (
               <button 
                 key={tf}
-                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all ${tf === '15m' ? 'bg-brand-green text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}
+                onClick={() => setActiveTf(tf)}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all ${activeTf === tf ? 'bg-brand-green text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}
               >
                 {tf}
               </button>
             ))}
+            
+            <div className="relative ml-1">
+              <button 
+                onClick={() => setIsTfDropdownOpen(!isTfDropdownOpen)}
+                className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all bg-slate-900 text-slate-400 hover:text-white ${!quickTfs.includes(activeTf) ? 'border border-brand-green text-brand-green' : ''}`}
+              >
+                {quickTfs.includes(activeTf) ? 'More' : activeTf}
+                <ChevronDown className={`w-3 h-3 transition-transform ${isTfDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isTfDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-24 bg-slate-950 border border-slate-800 rounded-lg shadow-2xl overflow-hidden z-[110] animate-in fade-in zoom-in-95 duration-100">
+                  {timeframes.map((tf) => (
+                    <button
+                      key={tf.label}
+                      onClick={() => {
+                        setActiveTf(tf.label);
+                        setIsTfDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-900 transition-colors ${
+                        activeTf === tf.label ? 'text-brand-green bg-brand-green/5' : 'text-slate-400'
+                      }`}
+                    >
+                      {tf.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-4 text-slate-500">
@@ -410,7 +470,7 @@ const MainChart = ({ prices, symbol }: { prices: Record<string, string>, symbol:
 
       {/* Real TradingView Chart */}
       <div className="flex-1 relative flex bg-slate-950 overflow-hidden">
-         <TradingViewWidget symbol={tvSymbol} />
+         <TradingViewWidget symbol={tvSymbol} interval={activeInterval} />
       </div>
 
       {/* Positions Panel */}
@@ -443,8 +503,16 @@ const MainChart = ({ prices, symbol }: { prices: Record<string, string>, symbol:
 };
 
 const SidebarRight = ({ calendar }: { calendar: CalendarEvent[] }) => {
+  const news = [
+    { source: "REUTERS", time: "2m ago", title: "ECB's Lagarde: Recent inflation data not enough to warrant cut", impact: "high" },
+    { source: "BLOOMBERG", time: "15m ago", title: "Oil holds gains as Middle East tensions offset US stockpile build", impact: "medium" },
+    { source: "FINVIZ", time: "32m ago", title: "Nasdaq futures slide as chipmakers retreat ahead of earnings", impact: "medium" },
+    { source: "TRADINGVIEW", time: "1h ago", title: "BTC/USDT testing $64k support level amid ETF outflow concern", impact: "low" },
+    { source: "REUTERS", time: "2h ago", title: "Gold prices stabilize as geopolitical fears balance high yields", impact: "low" },
+  ];
+
   return (
-    <aside className="w-full h-auto md:h-full border-l border-brand-border flex flex-col bg-slate-950 overflow-y-auto overflow-x-hidden">
+    <aside className="w-full h-auto md:h-full border-l border-brand-border flex flex-col bg-slate-950 overflow-y-auto overflow-x-hidden no-scrollbar pb-20 md:pb-6">
       {/* Order Entry Placeholder Style */}
       <div className="p-4 border-b border-brand-border bg-slate-900/20">
          <div className="flex gap-2 mb-4">
@@ -474,6 +542,34 @@ const SidebarRight = ({ calendar }: { calendar: CalendarEvent[] }) => {
             <RefinedWidget label="ATR (14)" value="0.143%" color="text-white" />
             <RefinedWidget label="Threshold" value="65" color="text-yellow-500" />
           </div>
+        </div>
+
+        {/* Real-time News Column */}
+        <div>
+          <div className="text-[10px] uppercase font-bold text-slate-500 mb-3 tracking-widest flex items-center gap-2">
+            Live Intelligence
+            <div className="h-[1px] flex-1 bg-slate-800" />
+          </div>
+          <div className="space-y-4">
+             {news.map((n, i) => (
+                <div key={i} className="group cursor-pointer">
+                   <div className="flex justify-between items-center mb-1">
+                      <span className={`text-[8px] font-black px-1 rounded ${
+                        n.impact === 'high' ? 'bg-brand-red text-white' : 
+                        n.impact === 'medium' ? 'bg-yellow-500 text-slate-950' : 
+                        'bg-slate-800 text-slate-400'
+                      }`}>{n.source}</span>
+                      <span className="text-[8px] font-mono text-slate-600 italic tracking-tighter">{n.time}</span>
+                   </div>
+                   <p className="text-[10px] leading-tight text-slate-300 font-bold group-hover:text-brand-green transition-colors line-clamp-2 uppercase tracking-tight">
+                     {n.title}
+                   </p>
+                </div>
+             ))}
+          </div>
+          <button className="w-full mt-4 py-1.5 border border-slate-800 text-[8px] font-bold text-slate-500 uppercase tracking-widest hover:text-white hover:border-slate-600 transition-colors">
+            View All Terminal Intel
+          </button>
         </div>
 
         <div>
@@ -577,7 +673,7 @@ const StrategyView = ({ sentiment, prices, selectedSymbol }: { sentiment: Market
   const symbolLabel = selectedSymbol.symbol.includes('USDT') ? selectedSymbol.symbol.replace('USDT', '') : selectedSymbol.symbol;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar">
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar pb-32 md:pb-12">
       <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
         {/* Top Header Analysis */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-800 pb-4 md:pb-6 gap-4">
@@ -765,7 +861,7 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
   const tvSymbol = selectedSymbol.symbol === 'XAUUSD' ? 'OANDA:XAUUSD' : `BINANCE:${selectedSymbol.symbol}`;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar">
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar pb-32 md:pb-12">
       <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
         
         {/* Header Section */}
@@ -922,7 +1018,142 @@ const StrategyTag = ({ label, active }: { label: string, active?: boolean }) => 
   </span>
 );
 
-// --- Institutional View Components ---
+// --- Sentiment View Component ---
+const SentimentView = ({ sentiment, symbol }: { sentiment: MarketSentiment, symbol: string }) => {
+  const [pulseData, setPulseData] = useState<any[]>([]);
+  
+  useEffect(() => {
+    // Simulate initial data
+    const initial = Array.from({ length: 15 }).map((_, i) => ({
+      id: i,
+      time: new Date(Date.now() - (15 - i) * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      score: Math.floor(Math.random() * 40) + 30,
+      source: ["Twitter", "Reddit", "News", "Discord"][Math.floor(Math.random() * 4)],
+      magnitude: (Math.random() * 2).toFixed(2)
+    }));
+    setPulseData(initial);
+
+    // Simulate real-time stream pulse
+    const interval = setInterval(() => {
+      const newItem = {
+        id: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        score: Math.floor(Math.random() * 60) + 20,
+        source: ["Twitter", "Reddit", "News", "Discord"][Math.floor(Math.random() * 4)],
+        magnitude: (Math.random() * 3).toFixed(2)
+      };
+      setPulseData(prev => [...prev.slice(1), newItem]);
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [symbol]);
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-8 no-scrollbar pb-32">
+      <div className="max-w-6xl mx-auto space-y-8">
+        <div className="flex flex-col md:flex-row justify-between items-center border-b border-white/5 pb-6 gap-4">
+          <div>
+            <h1 className="text-2xl md:text-4xl font-black text-white italic tracking-tighter uppercase">Sentiment Pulse Engine</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="w-2 h-2 bg-brand-green rounded-full animate-ping" />
+              <span className="text-[10px] font-mono text-brand-green uppercase tracking-widest">Live WebSocket Stream Active</span>
+            </div>
+          </div>
+          <div className="flex gap-4">
+            <div className="bg-slate-900 border border-slate-800 px-6 py-3 rounded-xl shadow-xl">
+               <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Global Conviction</div>
+               <div className="text-3xl font-black text-white font-mono">{sentiment.bullish}%</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 space-y-6">
+            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 relative overflow-hidden">
+               <div className="absolute top-0 right-0 p-4 opacity-10">
+                 <Activity className="w-32 h-32 text-brand-green" />
+               </div>
+               <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+                 <Zap className="w-3 h-3 text-brand-green" /> Frequency Analysis (15m Flow)
+               </h2>
+               
+               <div className="h-64 flex items-end justify-between gap-1 overflow-hidden">
+                  {pulseData.map((d, i) => (
+                    <div key={d.id} className="flex-1 flex flex-col items-center group cursor-help">
+                       <div className="text-[7px] text-slate-600 mb-2 rotate-45 md:rotate-0">{d.score}</div>
+                       <div 
+                         className={`w-full rounded-t-sm transition-all duration-500 ${d.score > 50 ? 'bg-brand-green/40' : 'bg-brand-red/40'}`} 
+                         style={{ height: `${d.score}%` }} 
+                       />
+                       <div className="text-[6px] text-slate-700 mt-2 font-mono whitespace-nowrap">{d.time}</div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+
+            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
+               <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+                 <Info className="w-3 h-3 text-blue-400" /> Narrative Clusters
+               </h2>
+               <div className="space-y-4">
+                 <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-[10px] font-black text-brand-green uppercase bg-brand-green/10 px-2 py-0.5 rounded">High Impact</span>
+                      <span className="text-[9px] font-mono text-slate-500">2 minutes ago</span>
+                    </div>
+                    <p className="text-sm text-slate-300 font-medium leading-relaxed italic">
+                      "Recent institutional accumulation suggests a strong floor forming at the $2,380 range despite macro headwinds."
+                    </p>
+                 </div>
+                 <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-[10px] font-black text-yellow-500 uppercase bg-yellow-500/10 px-2 py-0.5 rounded">Rumor Flow</span>
+                      <span className="text-[9px] font-mono text-slate-500">12 minutes ago</span>
+                    </div>
+                    <p className="text-sm text-slate-400 font-medium leading-relaxed italic">
+                      "Social chatter increasing regarding potential ETF rebalancing ahead of the weekend close."
+                    </p>
+                 </div>
+               </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 sticky top-0">
+               <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6">Source dominance</h2>
+               <div className="space-y-4">
+                  {[
+                    { name: 'Social (X/Reddit)', value: 65, color: 'bg-brand-green' },
+                    { name: 'Financial News', value: 20, color: 'bg-blue-500' },
+                    { name: 'On-chain signals', value: 10, color: 'bg-purple-500' },
+                    { name: 'Developer activity', value: 5, color: 'bg-slate-500' }
+                  ].map((s, i) => (
+                    <div key={i}>
+                       <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1.5 uppercase">
+                         <span>{s.name}</span>
+                         <span>{s.value}%</span>
+                       </div>
+                       <div className="h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                         <div className={`h-full ${s.color}`} style={{ width: `${s.value}%` }} />
+                       </div>
+                    </div>
+                  ))}
+               </div>
+               <div className="mt-8 p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl">
+                  <div className="text-yellow-500 text-[10px] font-black uppercase mb-1 flex items-center gap-2">
+                    <AlertTriangle className="w-3 h-3" /> Sentiment Divergence
+                  </div>
+                  <p className="text-[11px] text-yellow-500/70 font-medium leading-relaxed">
+                    Price is trending up while social sentiment shows a slight bearish drift. Watch for potential exhaustion.
+                  </p>
+               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
   const [setups, setSetups] = useState<InstitutionalSetup[]>([]);
@@ -953,7 +1184,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
   }, [prices['XAUUSD'] === undefined]); // Re-fetch only if initial spot price was missing
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-3 md:p-6 font-sans">
+    <div className="flex-1 overflow-y-auto bg-slate-950 p-3 md:p-6 font-sans pb-32 md:pb-12">
       <div className="max-w-6xl mx-auto space-y-4 md:space-y-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4 md:pb-8">
            <div className="flex items-center gap-3 md:gap-4">
@@ -1091,7 +1322,7 @@ const TerminalStat = ({ label, value }: { label: string, value: string }) => (
 // --- Main App with Hooks ---
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional'>('terminal');
+  const [activeView, setActiveView] = useState<'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional' | 'sentiment'>('terminal');
   const [selectedSymbol, setSelectedSymbol] = useState(SYMBOLS_CONFIG[0]); // Default to XAUUSD
   const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
   const [prices, setPrices] = useState<Record<string, string>>({});
@@ -1204,12 +1435,15 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans bg-slate-950">
-      <Header activeView={activeView} setActiveView={setActiveView} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} />
-      <ScannerBar status={isConnected ? "WebSocket Connected" : "Connecting..."} />
+      <div className="sticky top-0 z-[100] flex flex-col bg-slate-950 shadow-2xl">
+        <Header activeView={activeView} setActiveView={setActiveView} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} />
+        <ScannerBar status={isConnected ? "WebSocket Connected" : "Connecting..."} />
+      </div>
+      
       {activeView === 'terminal' ? (
         <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden scroll-smooth">
-            <div className="w-full md:w-64 md:shrink-0 flex flex-col md:overflow-auto border-b md:border-b-0 md:border-r border-brand-border">
+          <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden scroll-smooth pb-20 md:pb-0">
+            <div className="w-full md:w-64 md:shrink-0 flex flex-col md:overflow-auto border-b md:border-b-0 md:border-r border-brand-border h-auto md:h-full">
               <SidebarLeft 
                 prices={prices} 
                 sentiment={sentiment} 
@@ -1231,6 +1465,8 @@ export default function App() {
         <TradingAdviceView sentiment={sentiment} prices={prices} selectedSymbol={selectedSymbol} />
       ) : activeView === 'institutional' ? (
         <InstitutionalView prices={prices} />
+      ) : activeView === 'sentiment' ? (
+        <SentimentView sentiment={sentiment} symbol={selectedSymbol.symbol} />
       ) : (
         <BacktestView />
       )}
