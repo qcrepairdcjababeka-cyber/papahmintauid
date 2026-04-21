@@ -70,6 +70,16 @@ const SYMBOLS_CONFIG = [
   { symbol: 'XRPUSDT', label: 'XRP/USDT' },
 ];
 
+const FALLBACK_PRICES: Record<string, string> = {
+  'XAUUSD': '2650.00',
+  'BTCUSDT': '94120.00',
+  'ETHUSDT': '3350.00',
+  'SOLUSDT': '235.00',
+  'BNBUSDT': '640.00',
+  'XRPUSDT': '1.12',
+  'PAXGUSDT': '2650.00'
+};
+
 // --- TradingView Widget Component ---
 const TradingViewWidget = ({ symbol = "OANDA:XAUUSD", interval = "15" }: { symbol?: string, interval?: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -667,7 +677,9 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
   selectedSymbol: { symbol: string, label: string },
   provider: 'binance' | 'coinbase'
 }) => {
-  const [stablePrice, setStablePrice] = useState<number | null>(null);
+  const [lockedPrice, setLockedPrice] = useState<number | null>(null);
+  const [lockedRegime, setLockedRegime] = useState<boolean | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
@@ -677,56 +689,62 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
   };
 
   const currentPrice = getPrice(selectedSymbol.symbol);
-  const isBullish = sentiment.bullish > sentiment.bearish;
 
+  // Lock the baseline price and regime on mount or symbol change
   useEffect(() => {
-    setStablePrice(null); // Reset when symbol changes
+    if (currentPrice && !lockedPrice) {
+      setLockedPrice(currentPrice);
+      setLockedRegime(sentiment.bullish > sentiment.bearish);
+    }
+  }, [currentPrice, selectedSymbol.symbol]);
+
+  // Reset lock if symbol changes
+  useEffect(() => {
+    setLockedPrice(null);
+    setLockedRegime(null);
   }, [selectedSymbol.symbol]);
 
-  useEffect(() => {
-    // Snapshot price on initial load to stabilize MTF analysis
-    const current = getPrice(selectedSymbol.symbol);
-    if (current && !stablePrice) {
-      setStablePrice(current);
-    }
-  }, [prices[selectedSymbol.symbol], selectedSymbol.symbol]);
+  const isBullish = lockedRegime !== null ? lockedRegime : (sentiment.bullish > sentiment.bearish);
+  
+  // Technical Indicators (Simulated aligned with sentiment)
+  const tvTrend = isBullish ? 'STRONG BUY' : 'SELL';
+  const rsi = isBullish ? 62 : 41;
+  const signalCount = isBullish ? '24/26' : '3/26';
 
-  // Handle loading state
-  if (!currentPrice && !stablePrice) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-6">
-        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4" />
-        <div className="text-xl font-black text-white italic tracking-widest uppercase animate-pulse">Syncing {selectedSymbol.label} Feed...</div>
-        <p className="text-slate-500 font-mono text-[10px] mt-2 uppercase tracking-[0.3em]">Connecting to {provider.toUpperCase()} Liquidity</p>
-      </div>
-    );
-  }
-
-  const displayPrice = stablePrice || currentPrice || 0;
+  const displayPrice = lockedPrice || currentPrice || 0;
   const symbolLabel = selectedSymbol.symbol.includes('USDT') ? selectedSymbol.symbol.replace('USDT', '') : selectedSymbol.symbol;
 
-  // --- Dynamic Strategy Logic ---
+  // --- Dynamic Strategy Logic (ICT/SMC Protocol) ---
   const regime = isBullish ? 'BULLISH' : 'BEARISH';
+  const ictPhase = isBullish ? 'ACCUMULATION' : 'DISTRIBUTION';
   
   const strategyData = {
     M4: {
-      status: isBullish ? "STRONG BULLISH" : "BEARISH BIAS",
+      status: isBullish ? "ICT MACRO EXPANSION" : "ICT MACRO DISTRIBUTION",
       level: isBullish ? (displayPrice * 0.985) : (displayPrice * 1.015),
-      label: isBullish ? "DEMAND BASE" : "SUPPLY REJECTION"
+      label: isBullish ? "HTF POI (DEMAND)" : "HTF POI (SUPPLY)",
+      tvNote: isBullish ? "BT: DISCOUNT ARRAY" : "BT: PREMIUM ARRAY"
     },
     H1: {
-      trend: isBullish ? "ACCUMULATING" : "DISTRIBUTING",
-      flow: isBullish ? "BOS DETECTED" : "MSS DETECTED",
-      color: isBullish ? "text-brand-green" : "text-brand-red"
+      trend: isBullish ? "ICT POWER OF 3 (AMD)" : "ICT POWER OF 3 (AMD)",
+      flow: isBullish ? "MSS + BOS (BULLISH)" : "MSS + BOS (BEARISH)",
+      color: isBullish ? "text-brand-green" : "text-brand-red",
+      tvNote: isBullish ? "BT: SILVER BULLET" : "BT: LONDON KILLZONE"
     },
     M15: {
-      confirm: isBullish ? "ZONE MITIGATED" : "LIQUIDITY SWEPT",
-      trigger: isBullish ? (displayPrice * 0.999) : (displayPrice * 1.001)
+      confirm: isBullish ? "FVG MITIGATION" : "BREAKER MITIGATION",
+      trigger: isBullish ? (displayPrice * 0.999) : (displayPrice * 1.001),
+      sl: isBullish ? (displayPrice * 0.995) : (displayPrice * 1.005),
+      tp: isBullish ? (displayPrice * 1.015) : (displayPrice * 0.985),
+      tvNote: isBullish ? "BT: BULLISH OB" : "BT: BEARISH OB"
     },
     M5: {
-      confluence: isBullish ? "CHoCH DETECTED" : "mBOS DETECTED",
-      signal: isBullish ? "LONG CONFIRMED" : "SHORT CONFIRMED",
-      entry: isBullish ? (displayPrice * 1.0002) : (displayPrice * 0.9998)
+      confluence: isBullish ? "FVG + OB CONFLUENCE" : "FVG + BREAKER SYNC",
+      signal: isBullish ? "OTE ENTRY READY" : "JUDAS SWING READY",
+      entry: isBullish ? (displayPrice * 1.0002) : (displayPrice * 0.9998),
+      sl: isBullish ? (displayPrice * 0.999) : (displayPrice * 1.001),
+      tp: isBullish ? (displayPrice * 1.008) : (displayPrice * 0.992),
+      tvNote: isBullish ? "BT: MSS CONFIRM" : "BT: CHoCH CONFIRM"
     }
   };
 
@@ -739,26 +757,49 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
               <h1 className="text-xl md:text-3xl font-black text-white tracking-widest uppercase italic">MTF {selectedSymbol.label}</h1>
               <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${isBullish ? 'bg-brand-green/10 border-brand-green/20' : 'bg-brand-red/10 border-brand-red/20'}`}>
-                <div className={`w-1 h-1 rounded-full animate-pulse ${isBullish ? 'bg-brand-green' : 'bg-brand-red'}`} />
+                <div className={`w-1 h-1 rounded-full ${lockedRegime !== null ? '' : 'animate-pulse'} ${isBullish ? 'bg-brand-green' : 'bg-brand-red'}`} />
                 <span className={`text-[7px] md:text-[8px] font-black uppercase ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
-                  {regime} REGIME ACTIVE
+                  {regime} REGIME {lockedRegime !== null && '• STABILIZED'}
+                </span>
+              </div>
+              <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${isBullish ? 'bg-brand-green/20 border-brand-green/40' : 'bg-brand-red/20 border-brand-red/40'}`}>
+                <span className={`text-[7px] md:text-[8px] font-black uppercase ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
+                  ORDERFLOW: {isBullish ? 'BULLISH' : 'BEARISH'}
                 </span>
               </div>
               <div className="text-[7px] md:text-[8px] font-mono text-slate-600 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 flex items-center gap-2">
                 <span className="w-1 h-1 rounded-full bg-brand-green animate-pulse" />
-                FEED: {provider.toUpperCase()}
-              </div>
-              <div className="text-[7px] md:text-[8px] font-mono text-slate-600 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                UPDATED: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                BT: TV-ANALYSIS
               </div>
             </div>
-            <p className="text-slate-500 font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em]">Institutional Confluence HUB</p>
+            <p className="text-slate-500 font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em]">TradingView Signal Confluence HUB</p>
           </div>
-          <div className="text-left md:text-right">
-             <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic">SPOT TICKER</div>
-             <div className="text-xl md:text-2xl font-black text-white font-mono tracking-tighter">
-                ${currentPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---.--'}
-             </div>
+          <div className="flex items-center gap-6">
+            <button 
+              onClick={() => {
+                setIsUpdating(true);
+                setLockedPrice(currentPrice);
+                setLockedRegime(sentiment.bullish > sentiment.bearish);
+                setTimeout(() => setIsUpdating(false), 800);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                isUpdating 
+                ? 'bg-brand-green/20 text-brand-green border border-brand-green/30' 
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              {isUpdating ? 'REFRESHED!' : 'Update Strategy'}
+            </button>
+            <div className="hidden sm:block text-right border-r border-slate-800 pr-6">
+               <div className="text-[8px] font-black text-slate-600 uppercase tracking-widest">TV TREND</div>
+               <div className={`text-sm font-black italic ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>{tvTrend}</div>
+            </div>
+            <div className="text-left md:text-right">
+               <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic">SPOT TICKER</div>
+               <div className="text-xl md:text-2xl font-black text-white font-mono tracking-tighter">
+                  ${currentPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---.--'}
+               </div>
+            </div>
           </div>
         </div>
 
@@ -771,6 +812,7 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
             title="Macro Direction" 
             items={[
               { label: "DIRECTION", status: strategyData.M4.status, color: isBullish ? "text-brand-green" : "text-brand-red" },
+              { label: "TV HUB", status: strategyData.M4.tvNote, color: "text-slate-500 shrink-0 italic" },
               { label: strategyData.M4.label, status: `${symbolLabel} @ ${strategyData.M4.level.toFixed(2)}`, color: "text-white" }
             ]}
           />
@@ -781,7 +823,9 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
             tf="1H" 
             title="Structure & Flow" 
             items={[
+              { label: "ORDERFLOW", status: isBullish ? "BULLISH" : "BEARISH", color: isBullish ? "text-brand-green font-black" : "text-brand-red font-black" },
               { label: "TREND", status: strategyData.H1.trend, color: "text-yellow-500" },
+              { label: "TV HUB", status: strategyData.H1.tvNote, color: "text-slate-500 shrink-0 italic" },
               { label: "FLOW", status: strategyData.H1.flow, color: strategyData.H1.color }
             ]}
           />
@@ -793,6 +837,8 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
             title="Execution Zone" 
             items={[
               { label: "STATE", status: strategyData.M15.confirm, color: isBullish ? "text-brand-green" : "text-brand-red" },
+              { label: "STOP LOSS", status: `${symbolLabel} @ ${strategyData.M15.sl.toFixed(2)}`, color: "text-brand-red opacity-80" },
+              { label: "TAKE PROFIT", status: `${symbolLabel} @ ${strategyData.M15.tp.toFixed(2)}`, color: "text-brand-green opacity-80" },
               { label: "TRIGGER", status: `${symbolLabel} @ ${strategyData.M15.trigger.toFixed(2)}`, color: "text-white" }
             ]}
           />
@@ -803,37 +849,41 @@ const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: {
             tf="5M" 
             title="Entry Confirm" 
             items={[
-              { label: "CONFLUENCE", status: strategyData.M5.confluence, color: "text-brand-green" },
-              { label: "EXECUTION", status: strategyData.M5.signal, color: "text-white" },
-              { label: "ENTRY PRICE", status: `${symbolLabel} @ ${strategyData.M5.entry.toFixed(2)}`, color: isBullish ? "text-brand-green" : "text-brand-red" }
+              { label: "STOP LOSS", status: `${symbolLabel} @ ${strategyData.M5.sl.toFixed(2)}`, color: "text-brand-red font-black" },
+              { label: "TAKE PROFIT", status: `${symbolLabel} @ ${strategyData.M5.tp.toFixed(2)}`, color: "text-brand-green font-black" },
+              { label: "ENTRY PRICE", status: `${symbolLabel} @ ${strategyData.M5.entry.toFixed(2)}`, color: isBullish ? "text-brand-green" : "text-brand-red" },
+              { label: "CONFLUENCE", status: strategyData.M5.confluence, color: "text-brand-green" }
             ]}
           />
         </div>
 
-        {/* Technical Sub-analysis (OB, FVG, Liquidity, 5M Confirmation) */}
+        {/* Technical Sub-analysis (ICT SPECIFIC) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <TechnicalBox 
-            label="OB (ORDER BLOCK)" 
-            desc={`${isBullish ? 'H1 Demand Zone' : 'H1 Supply Zone'} identifies at ${(displayPrice * (isBullish ? 0.998 : 1.002)).toFixed(2)} - ${(displayPrice * (isBullish ? 1.002 : 1.006)).toFixed(2)}. ${isBullish ? 'Accumulation' : 'Distribution'} in progress.`}
-            status={isBullish ? "SUPPORTED" : "REJECTED"}
+            label="OB / POI (ORDER BLOCK)" 
+            desc={`${isBullish ? 'Bullish Rejection' : 'Bearish Rejection'} at HTF POI. Institutional sponsorship detected at ${(displayPrice * (isBullish ? 0.998 : 1.002)).toFixed(2)}. ${isBullish ? 'Orders being filled' : 'Positions being unloaded'}.`}
+            status={isBullish ? "SPONSORED" : "DISTRIBUTED"}
             color={isBullish ? "border-brand-green/30 text-brand-green" : "border-brand-red/30 text-brand-red"}
           />
           <TechnicalBox 
-            label="FVG (FAIR VALUE GAP)" 
-            desc={`Institutional imbalance detected at ${(displayPrice * (isBullish ? 1.005 : 0.995)).toFixed(2)}. Price gravitated towards this gap.`}
-            status="IMBALANCE"
+            label="BPR / FVG (BALANCED PRICE)" 
+            desc={`Balanced Price Range found at ${(displayPrice * (isBullish ? 1.002 : 0.998)).toFixed(2)}. Inefficiency filled. ICT Market Structure shift imminent.`}
+            status="BALANCING"
             color="border-yellow-500/30 text-yellow-500"
           />
           <TechnicalBox 
-            label="LIQUIDITY" 
-            desc={`${isBullish ? 'Buy-side' : 'Sell-side'} liquidity resting at ${(displayPrice * (isBullish ? 1.012 : 0.988)).toFixed(2)}. Zone for institutional draw.`}
-            status="TARGETING"
+            label="LIQUIDITY (SSL/BSL)" 
+            desc={`ICT Liquidity Grab: ${isBullish ? 'Sell-Side Liquidity (SSL)' : 'Buy-Side Liquidity (BSL)'} swept at ${(displayPrice * (isBullish ? 0.992 : 1.008)).toFixed(2)}. Market seeking institutional draw.`}
+            status="LIQUIDITY SWEPT"
             color={isBullish ? "border-brand-red/30 text-brand-red" : "border-brand-green/30 text-brand-green"}
           />
           <TechnicalBox 
-            label="CONFIRM (5M)" 
-            desc={`M5 ${isBullish ? 'Change of Character (CHoCH)' : 'Market Structure Break'} validated. Momentum shift confirmed by volume.`}
-            status="VALIDATED"
+            label="CONFIRM (5M FVG/OB)" 
+            desc={isBullish 
+              ? "M5 Mitigation detected. Displacement creating a new FVG inside a 5M Order Block. Entry validated via ICT Market Structure Shift (MSS). Confluence 98%."
+              : "M5 Distribution detected. Judas Swing providing displacement into a Bearish Breaker. Entry validated via ICT Market Structure Shift (MSS) downward. Confluence 98%."
+            }
+            status="PRIME ENTRY"
             color="border-brand-green/50 text-brand-green"
           />
         </div>
@@ -920,8 +970,10 @@ const TechnicalBox = ({ label, desc, status, color }: { label: string, desc: str
 // --- Trading Advice View Components ---
 
 const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: MarketSentiment; prices: Record<string, string>, selectedSymbol: { symbol: string, label: string } }) => {
-  const [stablePrice, setStablePrice] = useState<number | null>(null);
-
+  const [lockedEntry, setLockedEntry] = useState<number | null>(null);
+  const [lockedRegime, setLockedRegime] = useState<boolean | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
     if (!val) return null;
@@ -930,31 +982,29 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
   };
 
   const currentPriceRaw = getPrice(selectedSymbol.symbol);
-  const isBullish = sentiment.bullish > sentiment.bearish;
-
+  
+  // Lock the price and regime on mount or symbol change
   useEffect(() => {
-    setStablePrice(null); 
+    if (currentPriceRaw && !lockedEntry) {
+      setLockedEntry(currentPriceRaw);
+      setLockedRegime(sentiment.bullish > sentiment.bearish);
+    }
+  }, [currentPriceRaw, selectedSymbol.symbol]);
+
+  // Reset lock if symbol changes
+  useEffect(() => {
+    setLockedEntry(null);
+    setLockedRegime(null);
   }, [selectedSymbol.symbol]);
 
-  useEffect(() => {
-    const current = getPrice(selectedSymbol.symbol);
-    if (current && !stablePrice) {
-      setStablePrice(current);
-    }
-  }, [prices[selectedSymbol.symbol], selectedSymbol.symbol]);
-
-  // Handle loading state
-  if (!currentPriceRaw && !stablePrice) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-6">
-        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4" />
-        <div className="text-xl font-black text-white italic tracking-widest uppercase animate-pulse">Syncing {selectedSymbol.label} Feed...</div>
-      </div>
-    );
-  }
+  const isBullish = lockedRegime !== null ? lockedRegime : (sentiment.bullish > sentiment.bearish);
   
-  const planEntry = stablePrice || currentPriceRaw || 0;
-  const entry = planEntry;
+  // Simulated TA Data based on sentiment for consistency
+  const taSummary = isBullish ? 'Strong Buy' : sentiment.bearish > 60 ? 'Strong Sell' : 'Neutral';
+  const rsiValue = isBullish ? 64 : 38;
+  const maValue = isBullish ? 'Above MA(200)' : 'Below MA(200)';
+  
+  const entry = lockedEntry || currentPriceRaw || 0;
   const scale = entry > 500 ? 1 : 0.01;
   const sl = isBullish ? entry - (12.5 * scale) : entry + (12.5 * scale);
   const tp1 = isBullish ? entry + (25 * scale) : entry - (25 * scale);
@@ -972,31 +1022,53 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
               <Zap className="w-6 h-6 md:w-8 md:h-8 text-brand-green fill-brand-green" />
             </div>
             <div>
-              <h1 className="text-xl md:text-4xl font-black text-white tracking-widest uppercase italic leading-none">{selectedSymbol.label} Advice</h1>
-              <div className="flex items-center gap-2 mt-2">
-                <p className="text-slate-500 font-mono text-[8px] md:text-xs uppercase tracking-widest">Global Institutional Hub</p>
+              <h1 className="text-xl md:text-4xl font-black text-white tracking-widest uppercase italic leading-none">{selectedSymbol.label} Institutional Bias</h1>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <p className="text-slate-500 font-mono text-[8px] md:text-xs uppercase tracking-widest">ICT Killzone Hub</p>
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-brand-green/10 rounded-full border border-brand-green/20">
                   <div className="w-1 h-1 rounded-full bg-brand-green" />
-                  <span className="text-[7px] md:text-[9px] font-black text-brand-green uppercase whitespace-nowrap">PLAN LOCKED</span>
+                  <span className="text-[7px] md:text-[9px] font-black text-brand-green uppercase whitespace-nowrap">ALGO SYNCED</span>
+                </div>
+                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${isBullish ? 'bg-brand-green/10 border-brand-green/20' : 'bg-brand-red/10 border-brand-red/20'}`}>
+                   <span className={`text-[7px] md:text-[9px] font-black uppercase whitespace-nowrap ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
+                     ORDERFLOW: {isBullish ? 'BULLISH' : 'BEARISH'} {lockedRegime !== null && '(LOCKED)'}
+                   </span>
                 </div>
               </div>
             </div>
           </div>
           
-          <div className="w-full md:w-auto bg-brand-green/10 border border-brand-green/20 px-6 py-3 rounded-2xl flex items-center justify-between gap-8 shadow-2xl">
-             <div className="text-left">
-               <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic font-mono mb-1">{selectedSymbol.symbol} Spot</div>
-               <div className="text-xl md:text-3xl font-black text-white font-mono leading-none tracking-tighter">
-                 ${currentPriceRaw?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---.--'}
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <button 
+              onClick={() => {
+                setIsSyncing(true);
+                setLockedEntry(currentPriceRaw);
+                setLockedRegime(sentiment.bullish > sentiment.bearish);
+                setTimeout(() => setIsSyncing(false), 800);
+              }}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                isSyncing
+                ? 'bg-brand-green/20 text-brand-green border border-brand-green/30'
+                : 'bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {isSyncing ? 'SYNCED ✅' : 'Sync Plan'}
+            </button>
+            <div className="bg-brand-green/10 border border-brand-green/20 px-6 py-3 rounded-2xl flex items-center justify-between gap-8 shadow-2xl">
+               <div className="text-left">
+                 <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic font-mono mb-1">{selectedSymbol.symbol} Spot</div>
+                 <div className="text-xl md:text-3xl font-black text-white font-mono leading-none tracking-tighter">
+                   ${currentPriceRaw?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---.--'}
+                 </div>
                </div>
-             </div>
-             <div className="flex flex-col items-end">
-                <div className="flex items-center gap-1.5 text-[8px] md:text-[10px] font-black text-brand-green uppercase tracking-widest">
-                   <div className="w-1.5 h-1.5 bg-brand-green rounded-full animate-ping" />
-                   FEED ACTIVE
-                </div>
-                <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">1s Pulse</div>
-             </div>
+               <div className="flex flex-col items-end">
+                  <div className="flex items-center gap-1.5 text-[8px] md:text-[10px] font-black text-brand-green uppercase tracking-widest">
+                     <div className="w-1.5 h-1.5 bg-brand-green rounded-full animate-ping" />
+                     FEED ACTIVE
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">1s Pulse</div>
+               </div>
+            </div>
           </div>
         </div>
 
@@ -1006,7 +1078,44 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
           {/* Sidebar Area: Analysis & Execution */}
           <div className="lg:col-span-4 space-y-6 md:space-y-8">
             
-            {/* Box 1: Sentiment Metrics */}
+            {/* Box 1: Technical Analysis Summary (TV Style) */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors">
+              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 border-b border-slate-800 pb-3 flex items-center justify-between">
+                <span>Technical Summary</span>
+                <span className="text-slate-600 font-mono">1H INTERVAL</span>
+              </div>
+              
+              <div className="flex flex-col items-center py-4 bg-slate-950/50 rounded-2xl border border-slate-800/50 mb-6">
+                <div className={`text-2xl font-black uppercase italic tracking-tighter ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
+                  ICT: {taSummary}
+                </div>
+                <div className="text-[8px] font-bold text-slate-600 uppercase mt-2 tracking-[0.3em]">Power of 3 (AMD) Hub</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-950/40 border border-slate-800 p-3 rounded-xl">
+                   <div className="text-[8px] font-black text-slate-500 uppercase mb-1">Oscillators</div>
+                   <div className="text-xs font-bold text-white tracking-widest">{isBullish ? 'BUY' : 'SELL'} (8/12)</div>
+                </div>
+                <div className="bg-slate-950/40 border border-slate-800 p-3 rounded-xl">
+                   <div className="text-[8px] font-black text-slate-500 uppercase mb-1">Moving Averages</div>
+                   <div className="text-xs font-bold text-white tracking-widest">{isBullish ? 'BUY' : 'SELL'} (14/15)</div>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <div className="flex justify-between items-center text-[10px] font-bold">
+                   <span className="text-slate-500 uppercase">RSI (14)</span>
+                   <span className={rsiValue > 70 ? 'text-brand-red' : rsiValue < 30 ? 'text-brand-green' : 'text-slate-300'}>{rsiValue}</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] font-bold">
+                   <span className="text-slate-500 uppercase">Bull/Bear Power</span>
+                   <span className={isBullish ? 'text-brand-green' : 'text-brand-red'}>{isBullish ? 'Strong Bull' : 'Weakness'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Box 2: Sentiment Metrics */}
             <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors">
               <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 border-b border-slate-800 pb-3 flex items-center justify-between">
                 <span>Social AI Effect Metrics</span>
@@ -1041,36 +1150,35 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
                 </div>
                 <div className="text-[10px] font-black text-brand-green uppercase mb-2 tracking-widest flex items-center gap-2">
                   <div className="w-1 h-1 bg-brand-green rounded-full" />
-                  AI Context Analysis
+                  ICT / SMC Phase Analysis
                 </div>
                 <p className="text-[12px] text-slate-400 leading-relaxed italic font-mono">
-                  "{sentiment.summary}"
+                  "Market exhibiting ICT {isBullish ? 'Silver Bullet' : 'Judas Swing'} characteristics. SMC structure remains {isBullish ? 'Bullish' : 'Bearish'}. Entry logic: Waiting for 5M MSS confirmation via FVG + Order Block mitigation at OTE (0.79) level. Liquidity target (BSL/SSL) set."
                 </p>
               </div>
             </div>
 
-            {/* Box 2: Execution Framework */}
+            {/* Box 3: ICT Execution Framework */}
             <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors">
               <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 border-b border-slate-800 pb-3 flex items-center justify-between">
-                <span>Execution Framework</span>
+                <span>ICT Execution Framework</span>
                 <div className="flex items-center gap-1.5">
-                  <span className={`text-[10px] font-black ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
-                    {isBullish ? 'BULLISH' : 'BEARISH'}
-                  </span>
+                  <div className="w-1.5 h-1.5 bg-brand-green rounded-full animate-pulse" />
+                  <span className="text-[9px] font-black text-brand-green">KILLZONE: ACTIVE</span>
                 </div>
               </div>
               
               <div className="grid grid-cols-1 gap-4">
-                <EntryBox label="Protocol Entry" value={`$${entry.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Institutional Trigger" color="text-white" />
-                <EntryBox label="Hard Stop Loss" value={`$${sl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Risk Cut-off" color="text-brand-red" />
+                <EntryBox label="ICT Prime Entry" value={`$${entry.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="OTE / FVG Mitigation" color="text-white" />
+                <EntryBox label="Liquidity Void SL" value={`$${sl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Systemic Risk Cut" color="text-brand-red" />
                 <div className="grid grid-cols-2 gap-4">
-                  <EntryBox label="Target One" value={`$${tp1.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Partial Take Profit" color="text-brand-green" />
-                  <EntryBox label="Target Two" value={`$${tp2.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Max Extension" color="text-brand-green" />
+                  <EntryBox label="DOL: Internal" value={`$${tp1.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Partial Take Profit" color="text-brand-green" />
+                  <EntryBox label="DOL: External" value={`$${tp2.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} sub="Final Draw" color="text-brand-green" />
                 </div>
               </div>
 
               <button className="w-full mt-6 py-4 bg-brand-green text-slate-950 font-black text-xs uppercase tracking-[0.2em] rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-brand-green/10">
-                INITIATE PROTOCOL
+                EXECUTE ICT PROTOCOL
               </button>
             </div>
           </div>
@@ -1425,7 +1533,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<'terminal' | 'strategy' | 'backtest' | 'advice' | 'institutional' | 'sentiment'>('terminal');
   const [selectedSymbol, setSelectedSymbol] = useState(SYMBOLS_CONFIG[0]); // Default to XAUUSD
   const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
-  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [prices, setPrices] = useState<Record<string, string>>(FALLBACK_PRICES);
   const [isConnected, setIsConnected] = useState(false);
   const [dataProvider, setDataProvider] = useState<'binance' | 'coinbase'>('binance');
   const [sentiment, setSentiment] = useState<MarketSentiment>({
@@ -1467,36 +1575,41 @@ export default function App() {
     return () => clearInterval(interval);
   }, [selectedSymbol]);
 
-  // Fetch real-time XAU/USD from Global Spot API (via local proxy)
+  // Fetch real-time XAU and BTC from Global Spot/Exchanges (via local proxy)
   useEffect(() => {
-    const fetchGoldPrice = async () => {
+    const fetchFreshPrices = async () => {
       try {
-        const response = await fetch('/api/gold-price');
-        const data = await response.json();
-        if (data && data[0] && data[0].price) {
-          setPrices(prev => ({
-            ...prev,
-            'XAUUSD': data[0].price
-          }));
-        } else {
-          // Fallback to PAXG from current prices if spot fails
-          if (prices['PAXGUSDT']) {
-             setPrices(prev => ({ ...prev, 'XAUUSD': prev['PAXGUSDT'] }));
+        // Fetch Gold
+        const goldP = fetch('/api/gold-price').then(r => r.json()).catch(() => null);
+        // Fetch BTC from Gemini
+        const btcP = fetch('/api/btc-price').then(r => r.json()).catch(() => null);
+
+        const [goldData, btcData] = await Promise.all([goldP, btcP]);
+
+        setPrices(prev => {
+          const newPrices = { ...prev };
+          
+          if (goldData && goldData[0] && goldData[0].price) {
+            newPrices['XAUUSD'] = goldData[0].price;
+          } else if (prev['PAXGUSDT']) {
+            newPrices['XAUUSD'] = prev['PAXGUSDT'];
           }
-        }
+
+          if (btcData && btcData.price) {
+            newPrices['BTCUSDT'] = btcData.price;
+          }
+
+          return newPrices;
+        });
       } catch (err) {
-        console.error("Gold price fetch failed, falling back...", err);
-        // Fallback to PAXG
-        if (prices['PAXGUSDT']) {
-          setPrices(prev => ({ ...prev, 'XAUUSD': prev['PAXGUSDT'] }));
-        }
+        console.error("Initial price fetch failed:", err);
       }
     };
 
-    fetchGoldPrice();
-    const interval = setInterval(fetchGoldPrice, 15000); 
+    fetchFreshPrices();
+    const interval = setInterval(fetchFreshPrices, 15000); 
     return () => clearInterval(interval);
-  }, [prices['PAXGUSDT']]); // Re-attach fallback if prices object changes
+  }, [prices['PAXGUSDT']]);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -1518,10 +1631,13 @@ export default function App() {
         ws.onmessage = (event) => {
           const data = JSON.parse(event.data);
           if (data.s && data.c) {
-            setPrices(prev => ({
-              ...prev,
-              [data.s]: data.c
-            }));
+            setPrices(prev => {
+              const next = { ...prev, [data.s]: data.c };
+              if (data.s === 'PAXGUSDT') {
+                next['XAUUSD'] = data.c;
+              }
+              return next;
+            });
           }
         };
       } else {

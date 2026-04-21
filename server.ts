@@ -71,6 +71,25 @@ async function startServer() {
     }
   });
 
+  // API Route for BTC Price (Gemini Exchange)
+  app.get("/api/btc-price", async (req, res) => {
+    try {
+      const response = await fetch('https://api.gemini.com/v1/pubticker/btcusd');
+      if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
+      const data = await response.json();
+      if (data && data.last) {
+        return res.json({ price: data.last });
+      }
+      throw new Error("BTC price not available from Gemini");
+    } catch (error) {
+      console.error("BTC price proxy error:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch BTC price",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
