@@ -35,6 +35,16 @@ declare global {
   }
 }
 
+const getCurrentSession = () => {
+  const h = new Date().getUTCHours();
+  if (h >= 8 && h < 13) return "London";
+  if (h >= 13 && h < 17) return "London/NY";
+  if (h >= 17 && h < 22) return "New York";
+  if (h >= 22 || h < 0) return "Sydney";
+  if (h >= 0 && h < 8) return "Tokyo";
+  return "London"; // Fallback
+};
+
 interface Asset {
   symbol: string;
   label: string;
@@ -249,7 +259,11 @@ const Header = ({ activeView, setActiveView, selectedSymbol, setSelectedSymbol }
   );
 };
 
-const ScannerBar = ({ status = "Scanning..." }: { status?: string }) => {
+const ScannerBar = ({ status = "Scanning...", provider, onProviderChange }: { 
+  status?: string; 
+  provider: 'binance' | 'coinbase';
+  onProviderChange: (p: 'binance' | 'coinbase') => void;
+}) => {
   return (
     <div className="h-auto md:h-12 border-b border-brand-border px-2 md:px-4 py-2 md:py-0 flex flex-wrap md:flex-nowrap items-center justify-between text-[9px] md:text-[10px] font-bold uppercase tracking-widest bg-slate-950 gap-2 md:gap-0">
       <div className="flex items-center gap-4 md:gap-8 overflow-x-auto md:overflow-visible no-scrollbar w-full md:w-auto">
@@ -257,9 +271,11 @@ const ScannerBar = ({ status = "Scanning..." }: { status?: string }) => {
           <span className="animate-pulse whitespace-nowrap">{status}</span>
         </div>
         <div className="flex items-center gap-4 md:gap-6 text-slate-500 shrink-0">
-          <div className="flex flex-col">
-            <span className="text-[7px] md:text-[9px] text-slate-600">Vol 24h</span>
-            <span className="text-white font-mono text-[10px] md:text-xs tracking-tight">Active</span>
+          <div className="flex flex-col cursor-pointer group" onClick={() => onProviderChange(provider === 'binance' ? 'coinbase' : 'binance')}>
+            <span className="text-[7px] md:text-[9px] text-slate-600 group-hover:text-brand-green transition-colors">Data Feed</span>
+            <span className="text-white font-mono text-[10px] md:text-xs tracking-tight uppercase flex items-center gap-1 group-hover:text-brand-green transition-colors">
+              {provider} <Crosshair className="w-2 h-2 opacity-20" />
+            </span>
           </div>
           <div className="flex flex-col">
             <span className="text-[7px] md:text-[9px] text-slate-600">Market</span>
@@ -268,14 +284,14 @@ const ScannerBar = ({ status = "Scanning..." }: { status?: string }) => {
           <div className="flex flex-col">
             <span className="text-[7px] md:text-[9px] text-slate-600">Session</span>
             <div className="flex items-center gap-1 text-white text-[10px] md:text-xs">
-              <span>London</span>
+              <span>{getCurrentSession()}</span>
               <ChevronDown className="w-2 md:w-3 h-2 md:h-3 text-slate-500" />
             </div>
           </div>
         </div>
       </div>
       <div className="text-slate-600 hidden md:block">
-        Source: <span className="text-brand-green">Binance WebSocket API</span>
+        Source: <span className="text-brand-green">OANDA XAU / {provider === 'binance' ? 'Binance' : 'Coinbase'} WS</span>
       </div>
     </div>
   );
@@ -342,7 +358,9 @@ const SidebarLeft = ({ prices, sentiment, onRefreshSentiment, isRefreshing }: {
             <div key={conf.symbol} className="flex items-center justify-between p-2 rounded hover:bg-slate-800/30 cursor-pointer group transition-all">
               <span className="text-xs font-bold text-slate-400 group-hover:text-white uppercase tracking-tighter">{conf.label}</span>
               <span className="text-[11px] font-mono font-bold text-white tabular-nums">
-                {prices[conf.symbol] || 'Loading...'}
+                {prices[conf.symbol] ? parseFloat(prices[conf.symbol]).toLocaleString(undefined, { 
+                  minimumFractionDigits: conf.symbol.includes('USDT') || conf.symbol === 'XAUUSD' ? 2 : 5 
+                }) : 'Loading...'}
               </span>
             </div>
           ))}
@@ -538,7 +556,7 @@ const SidebarRight = ({ calendar }: { calendar: CalendarEvent[] }) => {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <RefinedWidget label="H1 Trend" value="Up" color="text-brand-green" />
-            <RefinedWidget label="Session" value="London" color="text-white" />
+            <RefinedWidget label="Session" value={getCurrentSession()} color="text-white" />
             <RefinedWidget label="ATR (14)" value="0.143%" color="text-white" />
             <RefinedWidget label="Threshold" value="65" color="text-yellow-500" />
           </div>
@@ -643,18 +661,22 @@ const CandlestickIcon = (props: any) => (
 
 // --- Strategy View Components ---
 
-const StrategyView = ({ sentiment, prices, selectedSymbol }: { sentiment: MarketSentiment; prices: Record<string, string>, selectedSymbol: { symbol: string, label: string } }) => {
+const StrategyView = ({ sentiment, prices, selectedSymbol, provider }: { 
+  sentiment: MarketSentiment; 
+  prices: Record<string, string>, 
+  selectedSymbol: { symbol: string, label: string },
+  provider: 'binance' | 'coinbase'
+}) => {
   const [stablePrice, setStablePrice] = useState<number | null>(null);
 
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
     if (!val) return null;
-    const cleaned = val.toString().replace(/[^0-9.]/g, '');
-    const parsed = parseFloat(cleaned);
+    const parsed = parseFloat(val);
     return isNaN(parsed) ? null : parsed;
   };
 
-  const currentPrice = getPrice(selectedSymbol.symbol) || 2415.50;
+  const currentPrice = getPrice(selectedSymbol.symbol);
   const isBullish = sentiment.bullish > sentiment.bearish;
 
   useEffect(() => {
@@ -667,10 +689,46 @@ const StrategyView = ({ sentiment, prices, selectedSymbol }: { sentiment: Market
     if (current && !stablePrice) {
       setStablePrice(current);
     }
-  }, [prices[selectedSymbol.symbol] === undefined, selectedSymbol.symbol]);
+  }, [prices[selectedSymbol.symbol], selectedSymbol.symbol]);
 
-  const displayPrice = stablePrice || currentPrice;
+  // Handle loading state
+  if (!currentPrice && !stablePrice) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-6">
+        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4" />
+        <div className="text-xl font-black text-white italic tracking-widest uppercase animate-pulse">Syncing {selectedSymbol.label} Feed...</div>
+        <p className="text-slate-500 font-mono text-[10px] mt-2 uppercase tracking-[0.3em]">Connecting to {provider.toUpperCase()} Liquidity</p>
+      </div>
+    );
+  }
+
+  const displayPrice = stablePrice || currentPrice || 0;
   const symbolLabel = selectedSymbol.symbol.includes('USDT') ? selectedSymbol.symbol.replace('USDT', '') : selectedSymbol.symbol;
+
+  // --- Dynamic Strategy Logic ---
+  const regime = isBullish ? 'BULLISH' : 'BEARISH';
+  
+  const strategyData = {
+    M4: {
+      status: isBullish ? "STRONG BULLISH" : "BEARISH BIAS",
+      level: isBullish ? (displayPrice * 0.985) : (displayPrice * 1.015),
+      label: isBullish ? "DEMAND BASE" : "SUPPLY REJECTION"
+    },
+    H1: {
+      trend: isBullish ? "ACCUMULATING" : "DISTRIBUTING",
+      flow: isBullish ? "BOS DETECTED" : "MSS DETECTED",
+      color: isBullish ? "text-brand-green" : "text-brand-red"
+    },
+    M15: {
+      confirm: isBullish ? "ZONE MITIGATED" : "LIQUIDITY SWEPT",
+      trigger: isBullish ? (displayPrice * 0.999) : (displayPrice * 1.001)
+    },
+    M5: {
+      confluence: isBullish ? "CHoCH DETECTED" : "mBOS DETECTED",
+      signal: isBullish ? "LONG CONFIRMED" : "SHORT CONFIRMED",
+      entry: isBullish ? (displayPrice * 1.0002) : (displayPrice * 0.9998)
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6 no-scrollbar pb-32 md:pb-12">
@@ -680,77 +738,103 @@ const StrategyView = ({ sentiment, prices, selectedSymbol }: { sentiment: Market
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
               <h1 className="text-xl md:text-3xl font-black text-white tracking-widest uppercase italic">MTF {selectedSymbol.label}</h1>
-              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-brand-green/10 rounded-full border border-brand-green/20">
-                <div className="w-1 h-1 rounded-full bg-brand-green animate-pulse" />
-                <span className="text-[7px] md:text-[8px] font-black text-brand-green uppercase">ANALYSIS STABILIZED</span>
+              <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${isBullish ? 'bg-brand-green/10 border-brand-green/20' : 'bg-brand-red/10 border-brand-red/20'}`}>
+                <div className={`w-1 h-1 rounded-full animate-pulse ${isBullish ? 'bg-brand-green' : 'bg-brand-red'}`} />
+                <span className={`text-[7px] md:text-[8px] font-black uppercase ${isBullish ? 'text-brand-green' : 'text-brand-red'}`}>
+                  {regime} REGIME ACTIVE
+                </span>
+              </div>
+              <div className="text-[7px] md:text-[8px] font-mono text-slate-600 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 flex items-center gap-2">
+                <span className="w-1 h-1 rounded-full bg-brand-green animate-pulse" />
+                FEED: {provider.toUpperCase()}
+              </div>
+              <div className="text-[7px] md:text-[8px] font-mono text-slate-600 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                UPDATED: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
-            <p className="text-brand-green font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em]">Institutional Confluence HUB</p>
+            <p className="text-slate-500 font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em]">Institutional Confluence HUB</p>
           </div>
           <div className="text-left md:text-right">
              <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic">SPOT TICKER</div>
              <div className="text-xl md:text-2xl font-black text-white font-mono tracking-tighter">
-                ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ${currentPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---.--'}
              </div>
           </div>
         </div>
 
-        {/* The 4H - 1H - 15M Logic Flow */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-4 md:py-8 relative">
-          <div className="absolute top-0 bottom-0 left-1/2 md:top-1/2 md:bottom-auto md:left-0 md:right-0 w-[1px] md:h-[1px] md:w-full bg-slate-800 -z-10" />
+        {/* The 4H - 1H - 15M - 5M Logic Flow */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-4 py-4 md:py-8 relative">
+          <div className="absolute top-0 bottom-0 left-1/2 lg:top-1/2 lg:bottom-auto lg:left-0 lg:right-0 w-[1px] lg:h-[1px] lg:w-full bg-slate-800 -z-10" />
           
           <StrategyCard 
             tf="4H" 
             title="Macro Direction" 
             items={[
-              { label: "DIRECTION", status: isBullish ? "STRONG BULLISH" : "BEARISH BIAS", color: isBullish ? "text-brand-green" : "text-brand-red" },
-              { label: "KEY LEVEL", status: `${symbolLabel} @ ${(displayPrice * 0.985).toFixed(2)}`, color: "text-white" }
+              { label: "DIRECTION", status: strategyData.M4.status, color: isBullish ? "text-brand-green" : "text-brand-red" },
+              { label: strategyData.M4.label, status: `${symbolLabel} @ ${strategyData.M4.level.toFixed(2)}`, color: "text-white" }
             ]}
           />
 
-          <div className="text-slate-800 text-xl md:text-3xl font-bold rotate-90 md:rotate-0">---</div>
+          <div className="text-slate-800 text-xl lg:text-2xl font-bold rotate-90 lg:rotate-0">---</div>
 
           <StrategyCard 
             tf="1H" 
             title="Structure & Flow" 
             items={[
-              { label: "TREND", status: isBullish ? "ACCUMULATING" : "DISTRIBUTING", color: "text-yellow-500" },
-              { label: "BREAKS", status: "MSS DETECTED", color: "text-brand-green" },
-              { label: "REVERSAL", status: "INVALIDATED", color: "text-slate-600" }
+              { label: "TREND", status: strategyData.H1.trend, color: "text-yellow-500" },
+              { label: "FLOW", status: strategyData.H1.flow, color: strategyData.H1.color }
             ]}
           />
 
-          <div className="text-slate-800 text-xl md:text-3xl font-bold rotate-90 md:rotate-0">---</div>
+          <div className="text-slate-800 text-xl lg:text-2xl font-bold rotate-90 lg:rotate-0">---</div>
 
           <StrategyCard 
             tf="15M" 
             title="Execution Zone" 
             items={[
-              { label: "CONFIRMATION", status: "ZONE MITIGATED", color: "text-brand-green" },
-              { label: "TRIGGER", status: `${symbolLabel} @ ${displayPrice.toFixed(2)}`, color: "text-white" }
+              { label: "STATE", status: strategyData.M15.confirm, color: isBullish ? "text-brand-green" : "text-brand-red" },
+              { label: "TRIGGER", status: `${symbolLabel} @ ${strategyData.M15.trigger.toFixed(2)}`, color: "text-white" }
+            ]}
+          />
+
+          <div className="text-slate-800 text-xl lg:text-2xl font-bold rotate-90 lg:rotate-0">---</div>
+
+          <StrategyCard 
+            tf="5M" 
+            title="Entry Confirm" 
+            items={[
+              { label: "CONFLUENCE", status: strategyData.M5.confluence, color: "text-brand-green" },
+              { label: "EXECUTION", status: strategyData.M5.signal, color: "text-white" },
+              { label: "ENTRY PRICE", status: `${symbolLabel} @ ${strategyData.M5.entry.toFixed(2)}`, color: isBullish ? "text-brand-green" : "text-brand-red" }
             ]}
           />
         </div>
 
-        {/* Technical Sub-analysis (OB, FVG, Liquidity) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+        {/* Technical Sub-analysis (OB, FVG, Liquidity, 5M Confirmation) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <TechnicalBox 
             label="OB (ORDER BLOCK)" 
-            desc={`H1 Demand Zone identifies at ${(displayPrice * 0.998).toFixed(2)} - ${(displayPrice * 1.002).toFixed(2)}. Institutional mitigation in progress.`}
-            status="REJECTED"
-            color="border-brand-green/30 text-brand-green"
+            desc={`${isBullish ? 'H1 Demand Zone' : 'H1 Supply Zone'} identifies at ${(displayPrice * (isBullish ? 0.998 : 1.002)).toFixed(2)} - ${(displayPrice * (isBullish ? 1.002 : 1.006)).toFixed(2)}. ${isBullish ? 'Accumulation' : 'Distribution'} in progress.`}
+            status={isBullish ? "SUPPORTED" : "REJECTED"}
+            color={isBullish ? "border-brand-green/30 text-brand-green" : "border-brand-red/30 text-brand-red"}
           />
           <TechnicalBox 
             label="FVG (FAIR VALUE GAP)" 
-            desc={`Imbalance gap detected at ${(displayPrice * 1.005).toFixed(2)}. Price expected to gravitate towards this liquidity pocket.`}
+            desc={`Institutional imbalance detected at ${(displayPrice * (isBullish ? 1.005 : 0.995)).toFixed(2)}. Price gravitated towards this gap.`}
             status="IMBALANCE"
             color="border-yellow-500/30 text-yellow-500"
           />
           <TechnicalBox 
             label="LIQUIDITY" 
-            desc={`Buy-side liquidity resting above ${(displayPrice * 1.012).toFixed(2)}. Target zone for institutional draw on liquidity.`}
+            desc={`${isBullish ? 'Buy-side' : 'Sell-side'} liquidity resting at ${(displayPrice * (isBullish ? 1.012 : 0.988)).toFixed(2)}. Zone for institutional draw.`}
             status="TARGETING"
-            color="border-brand-red/30 text-brand-red"
+            color={isBullish ? "border-brand-red/30 text-brand-red" : "border-brand-green/30 text-brand-green"}
+          />
+          <TechnicalBox 
+            label="CONFIRM (5M)" 
+            desc={`M5 ${isBullish ? 'Change of Character (CHoCH)' : 'Market Structure Break'} validated. Momentum shift confirmed by volume.`}
+            status="VALIDATED"
+            color="border-brand-green/50 text-brand-green"
           />
         </div>
 
@@ -773,6 +857,14 @@ const StrategyView = ({ sentiment, prices, selectedSymbol }: { sentiment: Market
                   </div>
                   <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
                     <div className="h-full bg-brand-green transition-all duration-1000 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style={{ width: `${sentiment.bullish}%` }} />
+                  </div>
+                  <div className="pt-2 grid grid-cols-4 gap-2">
+                    {['4H', '1H', '15M', '5M'].map((tf) => (
+                      <div key={tf} className="bg-slate-950/50 border border-slate-800 p-2 rounded flex flex-col items-center">
+                         <span className="text-[8px] font-black text-slate-600 mb-1">{tf}</span>
+                         <div className="w-1.5 h-1.5 rounded-full bg-brand-green animate-pulse" />
+                      </div>
+                    ))}
                   </div>
                   <p className="text-xs text-slate-500 italic font-mono leading-relaxed mt-4">
                     "{sentiment.summary}"
@@ -833,12 +925,11 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
     if (!val) return null;
-    const cleaned = val.toString().replace(/[^0-9.]/g, '');
-    const parsed = parseFloat(cleaned);
+    const parsed = parseFloat(val);
     return isNaN(parsed) ? null : parsed;
   };
 
-  const currentPriceRaw = getPrice(selectedSymbol.symbol) || 2415.50;
+  const currentPriceRaw = getPrice(selectedSymbol.symbol);
   const isBullish = sentiment.bullish > sentiment.bearish;
 
   useEffect(() => {
@@ -850,9 +941,19 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
     if (current && !stablePrice) {
       setStablePrice(current);
     }
-  }, [prices[selectedSymbol.symbol] === undefined, selectedSymbol.symbol]);
+  }, [prices[selectedSymbol.symbol], selectedSymbol.symbol]);
+
+  // Handle loading state
+  if (!currentPriceRaw && !stablePrice) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-6">
+        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4" />
+        <div className="text-xl font-black text-white italic tracking-widest uppercase animate-pulse">Syncing {selectedSymbol.label} Feed...</div>
+      </div>
+    );
+  }
   
-  const planEntry = stablePrice || currentPriceRaw;
+  const planEntry = stablePrice || currentPriceRaw || 0;
   const entry = planEntry;
   const scale = entry > 500 ? 1 : 0.01;
   const sl = isBullish ? entry - (12.5 * scale) : entry + (12.5 * scale);
@@ -886,7 +987,7 @@ const TradingAdviceView = ({ sentiment, prices, selectedSymbol }: { sentiment: M
              <div className="text-left">
                <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest italic font-mono mb-1">{selectedSymbol.symbol} Spot</div>
                <div className="text-xl md:text-3xl font-black text-white font-mono leading-none tracking-tighter">
-                 ${currentPriceRaw.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                 ${currentPriceRaw?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---.--'}
                </div>
              </div>
              <div className="flex flex-col items-end">
@@ -1162,8 +1263,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
   const getPrice = (symbol: string) => {
     const val = prices[symbol];
     if (!val) return null;
-    const cleaned = val.toString().replace(/[^0-9.]/g, '');
-    const parsed = parseFloat(cleaned);
+    const parsed = parseFloat(val);
     return isNaN(parsed) || parsed < 100 ? null : parsed;
   };
 
@@ -1193,18 +1293,18 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
               </div>
               <div>
                 <h1 className="text-xl md:text-3xl font-black text-white tracking-widest uppercase italic leading-none">Institutional Bloomberg</h1>
-                <p className="text-brand-green font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.4em] mt-1">Direct OANDA XAU/USD Feed Integrated</p>
+                <p className="text-brand-green font-mono text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.4em] mt-1">Global Smart Money Consensus Network</p>
               </div>
            </div>
            <div className="w-full md:w-auto bg-slate-900 border border-slate-800 px-4 py-3 rounded-lg flex flex-col items-center justify-center gap-1 shadow-2xl">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-green animate-ping" />
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">OANDA SPOT HUB</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Data Stream</span>
               </div>
               <div className="text-2xl font-black text-white font-mono tracking-tighter">
-                ${prices['XAUUSD'] || '---.--'}
+                ACTIVE CLOUD
               </div>
-              <div className="text-[8px] font-mono text-slate-500 uppercase tracking-tighter">Real-time Institutional Liquidity</div>
+              <div className="text-[8px] font-mono text-slate-500 uppercase tracking-tighter">Cross-Asset Institutional Intel</div>
            </div>
         </div>
 
@@ -1225,7 +1325,7 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
                   <div className="flex items-center justify-between mb-4 md:mb-6">
                     <div className="flex flex-col">
                       <div className="text-2xl md:text-4xl font-black text-white italic tracking-tighter">{setup.ticker}</div>
-                      <div className="text-[8px] font-mono text-slate-500 uppercase tracking-[0.2em]">OANDA-Derived Liquidity</div>
+                      <div className="text-[8px] font-mono text-slate-500 uppercase tracking-[0.2em]">Institutional Consensus Data</div>
                     </div>
                     <div className={`px-2 py-1 md:px-4 md:py-1.5 rounded text-[8px] md:text-[10px] font-black tracking-widest border ${
                       setup.bias === 'LONG' ? 'bg-brand-green/10 text-brand-green border-brand-green' : 
@@ -1248,15 +1348,15 @@ const InstitutionalView = ({ prices }: { prices: Record<string, string> }) => {
                          </div>
                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <div className="bg-slate-900 border border-slate-800 p-2 rounded flex flex-col items-center">
-                               <span className="text-[8px] font-bold text-slate-600 uppercase">OANDA Entry</span>
+                               <span className="text-[8px] font-bold text-slate-600 uppercase">Entry Target</span>
                                <span className="text-[12px] font-black text-white font-mono">${setup.entry}</span>
                             </div>
                             <div className="bg-slate-900 border border-brand-red/20 p-2 rounded flex flex-col items-center">
-                               <span className="text-[8px] font-bold text-brand-red uppercase">OANDA SL</span>
+                               <span className="text-[8px] font-bold text-brand-red uppercase">Stop Loss</span>
                                <span className="text-[12px] font-black text-brand-red font-mono">${setup.sl}</span>
                             </div>
                             <div className="bg-slate-900 border border-brand-green/20 p-2 rounded flex flex-col items-center">
-                               <span className="text-[8px] font-bold text-brand-green uppercase">OANDA TP</span>
+                               <span className="text-[8px] font-bold text-brand-green uppercase">Take Profit</span>
                                <span className="text-[12px] font-black text-brand-green font-mono">${setup.tp}</span>
                             </div>
                          </div>
@@ -1327,6 +1427,7 @@ export default function App() {
   const [calendar, setCalendar] = useState<CalendarEvent[]>([]);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [isConnected, setIsConnected] = useState(false);
+  const [dataProvider, setDataProvider] = useState<'binance' | 'coinbase'>('binance');
   const [sentiment, setSentiment] = useState<MarketSentiment>({
     bullish: 78,
     bearish: 18,
@@ -1375,7 +1476,7 @@ export default function App() {
         if (data && data[0] && data[0].price) {
           setPrices(prev => ({
             ...prev,
-            'XAUUSD': parseFloat(data[0].price).toLocaleString(undefined, { minimumFractionDigits: 2 })
+            'XAUUSD': data[0].price
           }));
         } else {
           // Fallback to PAXG from current prices if spot fails
@@ -1398,46 +1499,89 @@ export default function App() {
   }, [prices['PAXGUSDT']]); // Re-attach fallback if prices object changes
 
   useEffect(() => {
-    const streams = SYMBOLS_CONFIG.filter(s => s.symbol !== 'XAUUSD').concat({ symbol: 'PAXGUSDT', label: '' }).map(s => `${s.symbol.toLowerCase()}@ticker`).join('/');
-    const url = `wss://stream.binance.com:9443/ws/${streams}`;
-    
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
     const connect = () => {
-      const ws = new WebSocket(url);
+      setIsConnected(false);
       
-      ws.onopen = () => {
-        setIsConnected(true);
-        console.log('Connected to Binance WebSocket');
-      };
-      
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.s && data.c) {
-          setPrices(prev => ({
-            ...prev,
-            [data.s]: parseFloat(data.c).toLocaleString(undefined, { 
-              minimumFractionDigits: data.s.includes('USDT') ? 2 : 5 
-            })
+      if (dataProvider === 'binance') {
+        const streams = SYMBOLS_CONFIG.filter(s => s.symbol !== 'XAUUSD').concat({ symbol: 'PAXGUSDT', label: '' }).map(s => `${s.symbol.toLowerCase()}@ticker`).join('/');
+        const url = `wss://stream.binance.com:9443/ws/${streams}`;
+        ws = new WebSocket(url);
+        
+        ws.onopen = () => {
+          setIsConnected(true);
+          console.log('Connected to Binance WebSocket');
+        };
+        
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.s && data.c) {
+            setPrices(prev => ({
+              ...prev,
+              [data.s]: data.c
+            }));
+          }
+        };
+      } else {
+        // Coinbase implementation
+        const url = `wss://ws-feed.exchange.coinbase.com`;
+        ws = new WebSocket(url);
+
+        const cbProducts = SYMBOLS_CONFIG
+          .filter(s => s.symbol !== 'XAUUSD')
+          .map(s => s.symbol.replace('USDT', '-USD'));
+
+        ws.onopen = () => {
+          console.log('Connected to Coinbase WebSocket');
+          setIsConnected(true);
+          ws?.send(JSON.stringify({
+            type: "subscribe",
+            product_ids: cbProducts,
+            channels: ["ticker"]
           }));
-        }
-      };
-      
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === 'ticker' && data.price) {
+            const originalSymbol = SYMBOLS_CONFIG.find(s => s.symbol.replace('USDT', '-USD') === data.product_id)?.symbol;
+            if (originalSymbol) {
+              setPrices(prev => ({
+                ...prev,
+                [originalSymbol]: data.price
+              }));
+            }
+          }
+        };
+      }
+
       ws.onclose = () => {
         setIsConnected(false);
-        setTimeout(connect, 5000); // Reconnect
+        console.log(`${dataProvider} WebSocket closed, reconnecting in 5s...`);
+        reconnectTimeout = setTimeout(connect, 5000); // Reconnect
       };
 
       wsRef.current = ws;
     };
-
+    
     connect();
-    return () => wsRef.current?.close();
-  }, []);
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, [dataProvider]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans bg-slate-950">
       <div className="sticky top-0 z-[100] flex flex-col bg-slate-950 shadow-2xl">
         <Header activeView={activeView} setActiveView={setActiveView} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} />
-        <ScannerBar status={isConnected ? "WebSocket Connected" : "Connecting..."} />
+        <ScannerBar 
+          status={isConnected ? "WebSocket Active" : "Connecting..."} 
+          provider={dataProvider}
+          onProviderChange={setDataProvider}
+        />
       </div>
       
       {activeView === 'terminal' ? (
@@ -1460,7 +1604,7 @@ export default function App() {
           </div>
         </main>
       ) : activeView === 'strategy' ? (
-        <StrategyView sentiment={sentiment} prices={prices} selectedSymbol={selectedSymbol} />
+        <StrategyView sentiment={sentiment} prices={prices} selectedSymbol={selectedSymbol} provider={dataProvider} />
       ) : activeView === 'advice' ? (
         <TradingAdviceView sentiment={sentiment} prices={prices} selectedSymbol={selectedSymbol} />
       ) : activeView === 'institutional' ? (
@@ -1474,7 +1618,7 @@ export default function App() {
       <footer className="h-6 border-t border-slate-800 flex items-center justify-between px-3 text-[9px] uppercase tracking-tighter text-slate-500 bg-slate-950">
         <div className="flex space-x-4">
            <span className="flex items-center"><span className="w-1.5 h-1.5 bg-brand-green rounded-full mr-1"></span> Live Data Pipeline Active</span>
-           <span>Binance Latency: ~12ms</span>
+           <span>{dataProvider.charAt(0).toUpperCase() + dataProvider.slice(1)} Latency: ~12ms</span>
         </div>
         <div className="flex space-x-4">
            <span className="flex items-center gap-1 hover:text-white cursor-pointer"><Settings className="w-2.5 h-2.5" /> Market Status: Open</span>

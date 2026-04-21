@@ -40,9 +40,9 @@ const CACHE_KEYS = {
 };
 
 const CACHE_TTL = {
-  SENTIMENT: 1000 * 60 * 5,    // 5 minutes
-  CALENDAR: 1000 * 60 * 60,    // 1 hour
-  INSTITUTIONAL: 1000 * 60 * 60 // 1 hour
+  SENTIMENT: 1000 * 60 * 3,    // 3 minutes
+  CALENDAR: 1000 * 60 * 30,   // 30 minutes
+  INSTITUTIONAL: 1000 * 60 * 15 // 15 minutes
 };
 
 function getCache<T>(key: string): T | null {
@@ -50,7 +50,11 @@ function getCache<T>(key: string): T | null {
     const cached = localStorage.getItem(key);
     if (!cached) return null;
     const { data, timestamp } = JSON.parse(cached);
-    const ttl = key === CACHE_KEYS.SENTIMENT ? CACHE_TTL.SENTIMENT : CACHE_TTL.CALENDAR;
+    
+    let ttl = CACHE_TTL.SENTIMENT;
+    if (key === CACHE_KEYS.CALENDAR) ttl = CACHE_TTL.CALENDAR;
+    if (key === CACHE_KEYS.INSTITUTIONAL) ttl = CACHE_TTL.INSTITUTIONAL;
+
     if (Date.now() - timestamp > ttl) return null;
     return data;
   } catch {
@@ -196,16 +200,21 @@ export async function fetchInstitutionalSetups(currentPrice?: number): Promise<I
   
   if (isCoolingDown()) {
     console.log("AI in cooldown, using fallback for institutional");
+    const now = new Date();
+    // Variation based on time of day
+    const hour = now.getUTCHours();
+    const isLondon = hour >= 8 && hour < 16;
+    
      return cached || [
       { 
         ticker: 'GOLD (XAU/USD)', 
-        bias: 'LONG', 
-        institutionalFlow: 'Institutional demand remaining high due to macro factors.', 
-        keyLevels: ['$2,380', '$2,410'], 
-        catalyst: 'Macro Hedge (Cached Data)',
-        entry: '2412.5',
-        sl: '2395.0',
-        tp: '2465.0'
+        bias: isLondon ? 'LONG' : 'SHORT', 
+        institutionalFlow: isLondon ? 'European banks increasing gold reserves.' : 'Profit taking observed in New York session.', 
+        keyLevels: isLondon ? ['$2,405', '$2,415'] : ['$2,390', '$2,425'], 
+        catalyst: isLondon ? 'ECB Monetary Policy Shift (Fallback)' : 'US Dollar Strength Cycle (Fallback)',
+        entry: isLondon ? '2410.5' : '2395.0',
+        sl: isLondon ? '2398.0' : '2412.0',
+        tp: isLondon ? '2445.0' : '2365.0'
       }
     ];
   }
