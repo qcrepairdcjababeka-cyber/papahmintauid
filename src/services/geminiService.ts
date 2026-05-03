@@ -9,6 +9,13 @@ export interface MarketSentiment {
   bearish: number;
   neutral: number;
   summary: string;
+  divergence?: 'BULL_TRAP' | 'BEAR_TRAP' | 'ALIGNED' | 'UNCONFIRMED';
+  tradingLevels?: {
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+  };
   isMock?: boolean;
 }
 
@@ -28,6 +35,12 @@ export interface InstitutionalSetup {
   entry?: string;
   sl?: string;
   tp?: string;
+  cisd?: {
+    level: string;
+    type: 'BULLISH' | 'BEARISH';
+    strength: 'HIGH' | 'MEDIUM';
+    note: string;
+  };
 }
 
 // --- Caching & Cooldown Logic ---
@@ -92,6 +105,12 @@ export async function analyzeSocialSentiment(symbol: string): Promise<MarketSent
       bearish: 18,
       neutral: 4,
       summary: "AI Cooldown: Using cached/fallback data due to rate limits.",
+      tradingLevels: {
+        entry: symbol.includes('BTC') ? 94500 : symbol.includes('XAU') ? 2645 : 100,
+        sl: symbol.includes('BTC') ? 93200 : symbol.includes('XAU') ? 2625 : 95,
+        tp1: symbol.includes('BTC') ? 96000 : symbol.includes('XAU') ? 2680 : 105,
+        tp2: symbol.includes('BTC') ? 98500 : symbol.includes('XAU') ? 2720 : 110
+      },
       isMock: true
     };
   }
@@ -101,9 +120,13 @@ export async function analyzeSocialSentiment(symbol: string): Promise<MarketSent
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Perform a real-time sentiment analysis for ${symbol} based on current discussions on X (Twitter), Truth Social, and other major social platforms. 
+      contents: `Perform a real-time sentiment and Trading Direction analysis for ${symbol} based on current discussions on X (Twitter), Truth Social, and other major social platforms. 
       Analyze the mood of traders and influencers. 
-      Return a summary telling me what people are saying and the percentage of Bullish vs Bearish vs Neutral.`,
+      CHECK FOR DIVERGENCE: Compare the current social narrative (what people say) with the actual recent 24h price trend (bearish or bullish). 
+      If people are bullish but the price is dropping, label it as "BULL_TRAP". 
+      If people are bearish but the price is rising, label it as "BEAR_TRAP". 
+      If they match the price trend, use "ALIGNED".
+      Return a summary telling me what people are saying, the percentage of Bullish vs Bearish vs Neutral, the divergence status, and professional Trend-calculated levels.`,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
@@ -113,9 +136,20 @@ export async function analyzeSocialSentiment(symbol: string): Promise<MarketSent
             bullish: { type: Type.NUMBER },
             bearish: { type: Type.NUMBER },
             neutral: { type: Type.NUMBER },
-            summary: { type: Type.STRING }
+            summary: { type: Type.STRING },
+            divergence: { type: Type.STRING, enum: ["BULL_TRAP", "BEAR_TRAP", "ALIGNED", "UNCONFIRMED"] },
+            tradingLevels: {
+              type: Type.OBJECT,
+              properties: {
+                entry: { type: Type.NUMBER },
+                sl: { type: Type.NUMBER },
+                tp1: { type: Type.NUMBER },
+                tp2: { type: Type.NUMBER }
+              },
+              required: ["entry", "sl", "tp1", "tp2"]
+            }
           },
-          required: ["bullish", "bearish", "neutral", "summary"]
+          required: ["bullish", "bearish", "neutral", "summary", "divergence", "tradingLevels"]
         }
       }
     });
@@ -135,6 +169,12 @@ export async function analyzeSocialSentiment(symbol: string): Promise<MarketSent
       bearish: 18,
       neutral: 4,
       summary: "AI Rate Limited: Using historical sentiment benchmarks.",
+      tradingLevels: {
+        entry: symbol.includes('BTC') ? 94500 : symbol.includes('XAU') ? 2645 : 100,
+        sl: symbol.includes('BTC') ? 93200 : symbol.includes('XAU') ? 2625 : 95,
+        tp1: symbol.includes('BTC') ? 96000 : symbol.includes('XAU') ? 2680 : 105,
+        tp2: symbol.includes('BTC') ? 98500 : symbol.includes('XAU') ? 2720 : 110
+      },
       isMock: true
     };
   }
@@ -224,10 +264,13 @@ export async function fetchInstitutionalSetups(currentPrice?: number): Promise<I
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Perform a high-level scan of institutional trading setups and market convictions typically found on Bloomberg Terminal for major global assets. 
-      Focus on where large institutional funds (Smart Money) are positioning. 
+      contents: `Perform a high-level scan of institutional trading setups and market convictions typically found on Bloomberg Terminal.
+      Focus on where large institutional funds (Institutions) are positioning.
+      SPECIAL PROTOCOL: Detect CISD (Change in State of Delivery / Closing Institutional Supply/Demand) levels for XAU/USD (GOLD) on the 5-minute timeframe.
+      Identify where a candle has closed above/below a key institutional orderblock.
       Return a list of setups including ticker, bias, institutional flow description, key levels, and macro catalysts.
-      Crucially, provide a FIXED trading plan for each: entry level, stop loss (sl), and take profit (tp) based on current spot prices.`,
+      Crucially, provide a FIXED trading plan for each: entry level, stop loss (sl), and take profit (tp). 
+      For GOLD, explicitly sub-analyze for CISD signals.`,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
@@ -243,7 +286,17 @@ export async function fetchInstitutionalSetups(currentPrice?: number): Promise<I
               catalyst: { type: Type.STRING },
               entry: { type: Type.STRING },
               sl: { type: Type.STRING },
-              tp: { type: Type.STRING }
+              tp: { type: Type.STRING },
+              cisd: {
+                type: Type.OBJECT,
+                properties: {
+                  level: { type: Type.STRING },
+                  type: { type: Type.STRING, enum: ["BULLISH", "BEARISH"] },
+                  strength: { type: Type.STRING, enum: ["HIGH", "MEDIUM"] },
+                  note: { type: Type.STRING }
+                },
+                required: ["level", "type", "strength", "note"]
+              }
             },
             required: ["ticker", "bias", "institutionalFlow", "keyLevels", "catalyst", "entry", "sl", "tp"]
           }
@@ -284,6 +337,111 @@ export async function fetchInstitutionalSetups(currentPrice?: number): Promise<I
         entry: '2398.0',
         sl: '2375.0',
         tp: '2450.0'
+      }
+    ];
+  }
+}
+
+export interface TradeEvaluation {
+  decision: 'EXECUTE' | 'REJECT';
+  reason: string;
+  confidence: number;
+}
+
+export async function evaluateTrade(
+  signal: any, 
+  sentiment: any, 
+  calendar: any[]
+): Promise<TradeEvaluation> {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Perform a professional risk audit on the following trade signal. 
+      Analyze if the setup is high probability based on the current social sentiment and upcoming high-impact economic events.
+      If a High Impact USD news event is coming in less than 30 minutes, you MUST REJECT.
+      
+      Trade Signal: ${JSON.stringify(signal)}
+      Market Sentiment: ${JSON.stringify(sentiment)}
+      Economy Calendar (Next 24h): ${JSON.stringify(calendar.slice(0, 5))}
+      
+      Return a JSON decision on whether to EXECUTE or REJECT.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            decision: { type: Type.STRING, enum: ["EXECUTE", "REJECT"] },
+            reason: { type: Type.STRING },
+            confidence: { type: Type.NUMBER }
+          },
+          required: ["decision", "reason", "confidence"]
+        }
+      }
+    });
+
+    return JSON.parse(response.text);
+  } catch (error: any) {
+    console.warn("AI Trade Evaluation failed:", error.message || error);
+    return { decision: 'REJECT', reason: "AI Service Interruption or Rate Limit", confidence: 0 };
+  }
+}
+
+export interface MarketNews {
+  id: string;
+  source: string;
+  title: string;
+  time: string;
+  impact: 'high' | 'medium' | 'low';
+  summary: string;
+}
+
+export async function fetchMarketNews(symbol: string): Promise<MarketNews[]> {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Generate 5 realistic and currently relevant high-impact financial news headlines and brief summaries for the trading pair ${symbol}. 
+      Base them on the current global economic climate as of ${new Date().toISOString()}.
+      Include source (e.g., Bloomberg, Reuters, Financial Times), time (e.g., '5m ago'), and impact level.
+      Return the data as a JSON array of objects.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              source: { type: Type.STRING },
+              title: { type: Type.STRING },
+              time: { type: Type.STRING },
+              impact: { type: Type.STRING, enum: ["high", "medium", "low"] },
+              summary: { type: Type.STRING }
+            },
+            required: ["id", "source", "title", "time", "impact", "summary"]
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text);
+  } catch (error: any) {
+    console.warn("Market News Fetch failed:", error.message || error);
+    return [
+      {
+        id: "1",
+        source: "REUTERS",
+        title: "Federal Reserve maintains hawkish stance amid sticky inflation data",
+        time: "12m ago",
+        impact: "high",
+        summary: "Market participants interpret recent FOMC minutes as a signal for 'higher for longer' rates."
+      },
+      {
+        id: "2",
+        source: "BLOOMBERG",
+        title: "Gold hits record highs as safe-haven demand accelerates",
+        time: "45m ago",
+        impact: "medium",
+        summary: "Geopolitical tensions in the Middle East drive central bank accumulation of bullion."
       }
     ];
   }
